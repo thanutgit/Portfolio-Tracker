@@ -19,6 +19,7 @@ DECISIONS.md D11).
 | 0001_init.sql | Phase 1 schema: portfolios, assets, transactions, prices tables + latest_prices, holdings views |
 | 0002_add_targets.sql | Phase 2: `targets` table (portfolio_id, asset_id, target_pct, drift_threshold) |
 | 0003_add_crypto_asset_type.sql | Adds `crypto` as an allowed `asset_type` (for Bitcoin etc.) |
+| 0004_add_dividend_returns.sql | Phase 3 (dividends slice): `dividend_income` + `holdings_with_returns` views — net dividends and total_return, built on top of `holdings` |
 
 ## Applying migrations
 Run the file's contents in the Supabase SQL Editor, in order. There's no

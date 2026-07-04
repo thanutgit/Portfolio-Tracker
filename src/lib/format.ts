@@ -36,6 +36,13 @@ export function formatQuantity(value: number) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 }).format(value);
 }
 
+export function formatDateTime(isoString: string) {
+  return new Date(isoString).toLocaleString("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
 export function pnlColor(value: number) {
   if (value > 0) return "text-green-600 dark:text-green-400";
   if (value < 0) return "text-red-600 dark:text-red-400";

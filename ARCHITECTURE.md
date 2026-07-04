@@ -37,6 +37,12 @@ Views (computed, read-only):
 - `latest_prices` — newest price per asset.
 - `holdings` — per asset: quantity, avg_cost, last_price, cost_basis,
   market_value, unrealized_pnl, unrealized_pct. Weighted-average cost.
+- `dividend_income` — net dividends received per asset (all-time), from
+  `transactions` where `type = 'dividend'`. Convention: `quantity = 1`,
+  `price` = gross dividend amount, `tax` = withholding tax. Added Phase 3.
+- `holdings_with_returns` — `holdings` + `net_dividends` + `total_return`
+  (= unrealized_pnl + net_dividends) + `total_return_pct`. Built on top of
+  `holdings`, doesn't replace it. Added Phase 3, see DECISIONS.md.
 
 Full SQL: see `migrations/` (all files in order = current schema; start with
 `migrations/README.md`). Real portfolio data already inserted is in
@@ -62,6 +68,15 @@ Every schema change = an ordered file under `migrations/` (`0001_init.sql`,
 - Default currency is THB.
 - `tax_bucket`: `RMF` / `SSF` / `ThaiESG` (holding-period rules = later phase).
 - Thai stock dividends carry 10% withholding tax → record in `transactions.tax`.
+
+## Crypto price refresh
+`POST /api/refresh-crypto-prices` (Next.js Route Handler, server-side) fetches
+BTC/THB (and ETH/THB) from CoinGecko's free public API (no key) and inserts
+into `prices` with `source = 'api'`. Manually triggered from the Holdings page
+button — no background job/cron yet. Only assets whose symbol has a known
+CoinGecko id are refreshed (see `COINGECKO_IDS` in the route); other
+`asset_type = 'crypto'` assets are reported as skipped, not silently ignored.
+Thai funds have no public price API and stay manual. See DECISIONS.md.
 
 ## Conventions
 - Money math in decimal/`numeric`, never floating point.

@@ -28,3 +28,19 @@ export interface Target {
   drift_threshold: string;
   created_at: string;
 }
+
+// `holdings` + net dividends + total return (Phase 3, dividends slice).
+export interface HoldingWithReturns extends Holding {
+  net_dividends: string;
+  total_return: string;
+  total_return_pct: string | null;
+}
+
+// A single dividend transaction (transactions where type = 'dividend').
+export interface DividendTransaction {
+  id: string;
+  trade_date: string;
+  price: string; // gross dividend amount
+  tax: string; // withholding tax amount
+  fee: string;
+}

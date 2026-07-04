@@ -18,7 +18,18 @@
       "Bash(node smoke.mjs)",
       "Bash(pkill -f \"next dev\")",
       "Bash(pkill -f \"next-server\")",
-      "Bash(node smoke2.mjs)"
+      "Bash(node smoke2.mjs)",
+      "Bash(node smoke3.mjs)",
+      "Bash(node smoke4.mjs)",
+      "Bash(node smoke5.mjs)",
+      "Bash(mkdir -p \"c:\\\\Users\\\\Thanu\\\\Desktop\\\\PP\\\\Claude\\\\Portfolio Tracker\\\\src\\\\app\\\\api\\\\refresh-crypto-prices\")",
+      "Bash(curl -sS -X POST http://localhost:3000/api/refresh-crypto-prices)",
+      "Bash(node smoke6.mjs)",
+      "Bash(node smoke-poll.mjs)",
+      "Bash(node smoke-immediate.mjs)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Thanu\\Desktop\\PP\\Claude\\Portfolio Tracker\\src\\app\\api"
     ]
   }
 }

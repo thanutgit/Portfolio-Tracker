@@ -74,3 +74,45 @@ Avoids the edge case of setting a target on an asset with no price/never held.
 If a fund with a target is later sold off entirely, the rebalancing page shows
 it as "holding 0%, should be X%", using name/last price from the join with
 `assets`.
+
+## D17 — Dividends reuse existing `transactions` columns, no schema change
+`quantity = 1`, `price` = gross dividend amount, `tax` = withholding tax,
+`fee = 0`. `type = 'dividend'` was already provisioned since Phase 1, so no
+table changes were needed.
+
+## D18 — New `holdings_with_returns` view instead of editing `holdings`
+Built via a join on top of the existing view rather than modifying it, so
+Targets/Rebalancing (which depend on `holdings`/`targets` directly) are
+completely unaffected.
+
+## D19 — Duplicate dividends are guarded by a UI confirm dialog, not a DB constraint
+Only warns, doesn't block — supplementary dividend payments on the same date
+are a real, valid case, and a uniqueness constraint would block them.
+
+## D20 — CoinGecko with no API key, symbol→id mapping hardcoded in code
+Simplest option since only BTC is held right now. A crypto asset with no
+mapping shows up as "skipped" with a clear reason instead of being silently
+ignored.
+
+## D21 — Manual refresh only, no cron/background job, no caching
+Matches what was asked for this round: the user triggers refresh explicitly,
+no added infrastructure until it's actually needed.
+
+## D22 — Both the CoinGecko fetch and the `prices` insert happen server-side (API route)
+Calling CoinGecko directly from the browser would risk CORS/rate limits tied
+to the user's IP. Keeping both steps in one place also makes it easy to add
+caching or an API key later.
+
+## D23 — Plain `setInterval`, no tab-visibility guard
+Only one CoinGecko call every 60s from a single tab, nowhere near the
+free-tier rate limit. Adding logic to pause when the tab isn't active would
+be unnecessary complexity for now.
+
+## D24 — Interval resets on every portfolio switch (keyed on `selectedId`)
+Avoids a stale-closure bug where the interval would keep referencing an old
+portfolio id.
+
+## D25 — Removed the manual "Refresh crypto prices" button, kept only auto-refresh
+Auto-refresh (immediately on mount + every 60s after) already covers normal
+usage, so the button was redundant. Firing immediately on mount means an F5
+still gets a live price right away.

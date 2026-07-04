@@ -43,6 +43,12 @@ consumer app, not a bank's legacy dashboard.
   (accessibility).
 - Empty states (no portfolios yet, no holdings yet) get a simple, calm
   message + a clear next action — not a jarring blank page.
+- Composite numbers (a figure that's the sum of two or more parts — e.g.
+  Total Return = price gain + dividends) must show the parts as separate,
+  labeled columns/values alongside the total, not just the combined number.
+  Two green numbers with no label look identical and get misread as
+  duplicates. Apply this again for future composite figures (e.g. FX-adjusted
+  returns in Phase 3).
 
 ## Responsive
 - Must work on mobile — this is a portfolio you'll check on your phone.
