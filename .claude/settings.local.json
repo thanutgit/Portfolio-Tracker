@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp -r 'C:\\\\Users\\\\Thanu\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker\\\\1655e6ee-f29c-4c3c-ac20-d8714af6f6c1\\\\scratchpad\\\\portfolio-tracker/src' 'c:\\\\Users\\\\Thanu\\\\Desktop\\\\PP\\\\Claude\\\\Portfolio Tracker/')",
+      "Bash(cp -r 'C:\\\\Users\\\\Thanu\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker\\\\1655e6ee-f29c-4c3c-ac20-d8714af6f6c1\\\\scratchpad\\\\portfolio-tracker/public' 'c:\\\\Users\\\\Thanu\\\\Desktop\\\\PP\\\\Claude\\\\Portfolio Tracker/')",
+      "Bash(cp 'C:\\\\Users\\\\Thanu\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker\\\\1655e6ee-f29c-4c3c-ac20-d8714af6f6c1\\\\scratchpad\\\\portfolio-tracker/.gitignore' 'c:\\\\Users\\\\Thanu\\\\Desktop\\\\PP\\\\Claude\\\\Portfolio Tracker/')",
+      "Bash(cp 'C:\\\\Users\\\\Thanu\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker\\\\1655e6ee-f29c-4c3c-ac20-d8714af6f6c1\\\\scratchpad\\\\portfolio-tracker/eslint.config.mjs' 'c:\\\\Users\\\\Thanu\\\\Desktop\\\\PP\\\\Claude\\\\Portfolio Tracker/')",
+      "Bash(cp 'C:\\\\Users\\\\Thanu\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker\\\\1655e6ee-f29c-4c3c-ac20-d8714af6f6c1\\\\scratchpad\\\\portfolio-tracker/next-env.d.ts' 'c:\\\\Users\\\\Thanu\\\\Desktop\\\\PP\\\\Claude\\\\Portfolio Tracker/')",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(timeout 30 bash -c 'until curl -sf http://localhost:3000 >/dev/null; do sleep 1; done')",
+      "Bash(chromium-cli --help)",
+      "Bash(npx --yes playwright --version)",
+      "Bash(npx --yes playwright install chromium --with-deps)",
+      "Bash(npm init *)",
+      "Bash(node smoke.mjs)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(pkill -f \"next-server\")",
+      "Bash(node smoke2.mjs)"
+    ]
+  }
+}
