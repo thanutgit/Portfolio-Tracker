@@ -26,12 +26,12 @@ directly. Reasoning in DECISIONS.md (D1–D5).
 
 Tables:
 - `portfolios` — one user can have many.
-- `assets` — shared master list (stock/etf/fund/bond/cash). Cash is an asset.
+- `assets` — shared master list (stock/etf/fund/bond/cash/crypto). Cash is an asset.
 - `transactions` — source of truth. Types: buy/sell/dividend/fee/deposit/
   withdraw/split. `quantity` stored positive; direction comes from `type`.
 - `prices` — latest price per asset (source: manual/csv/api).
-- `targets` — per-asset target % + drift_threshold, used for rebalancing
-  (Phase 2). Not part of the computed-holdings chain.
+- `targets` — desired allocation per asset (target_pct, drift_threshold),
+  added in Phase 2. See ROADMAP.md and DECISIONS.md D14–D16.
 
 Views (computed, read-only):
 - `latest_prices` — newest price per asset.

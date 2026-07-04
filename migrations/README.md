@@ -17,7 +17,8 @@ DECISIONS.md D11).
 | File | What it does |
 |------|---------------|
 | 0001_init.sql | Phase 1 schema: portfolios, assets, transactions, prices tables + latest_prices, holdings views |
-| 0002_add_targets.sql | Phase 2: `targets` table (per-asset target_pct + drift_threshold) for rebalancing |
+| 0002_add_targets.sql | Phase 2: `targets` table (portfolio_id, asset_id, target_pct, drift_threshold) |
+| 0003_add_crypto_asset_type.sql | Adds `crypto` as an allowed `asset_type` (for Bitcoin etc.) |
 
 ## Applying migrations
 Run the file's contents in the Supabase SQL Editor, in order. There's no

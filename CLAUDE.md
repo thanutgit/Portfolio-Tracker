@@ -12,7 +12,8 @@ task in front of you — don't load everything.
   `holdings` view; do NOT recompute average cost in app code. (DECISIONS.md D1, D5)
 - **Never expose the Supabase SECRET key** (`sb_secret_...`). Client uses the
   PUBLISHABLE key only. No key values in any committed file.
-- **Build Phase 1 only** unless explicitly asked. (ROADMAP.md)
+- **Build only the phase currently in progress** per ROADMAP.md — don't jump
+  ahead to a later phase unless explicitly asked.
 - **Schema changes go in `migrations/` as new numbered files.** Never edit
   `migrations/0001_init.sql` or any applied migration — add
   `migrations/000N_description.sql` instead. See migrations/README.md.
@@ -26,10 +27,11 @@ task in front of you — don't load everything.
 | ROADMAP.md | deciding what to build next; phase scope |
 | migrations/README.md | making any schema change |
 | migrations/ | current DB schema — read all files in order, README.md first |
+| GOTCHAS.md | debugging a weird bug or writing SQL by hand — check known footguns first |
 | seed_data.sql | real portfolio data already inserted — reference only, don't re-run blindly |
 
 ## Keeping these docs healthy
 - Made a real decision? Append it to DECISIONS.md. Don't silently revert one.
 - Finished a task/phase? Log it (CHANGELOG.md already exists — keep it updated).
-- Hit a real bug/footgun? Record it (create GOTCHAS.md on the first incident).
+- Hit a real bug/footgun? Record it in GOTCHAS.md.
 - Keep this map current, and keep every file short — it loads into context.
