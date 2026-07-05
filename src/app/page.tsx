@@ -1,3 +1,4 @@
+// last touched 2026-07-05 for hook test
 "use client";
 
 import { useEffect, useState } from "react";
@@ -296,7 +297,7 @@ export default function Home() {
                             <td className="px-4 py-3 text-right">
                               <button
                                 onClick={() => setDividendTarget(h)}
-                                className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                               >
                                 + Dividend
                               </button>

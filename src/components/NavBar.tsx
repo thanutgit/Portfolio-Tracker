@@ -19,6 +19,9 @@ export function NavBar() {
         <Link href="/rebalancing" className={LINK_CLASS}>
           Rebalancing
         </Link>
+        <Link href="/prices" className={LINK_CLASS}>
+          Prices
+        </Link>
       </div>
     </nav>
   );

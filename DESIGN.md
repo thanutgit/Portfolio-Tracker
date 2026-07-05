@@ -36,6 +36,28 @@ consumer app, not a bank's legacy dashboard.
   table) with soft borders/shadows — not harsh dividing lines.
 - Rounded corners, subtle borders — matches the fintech-clean reference.
 
+## Depth & elevation
+Default state is flat — depth is reserved for interaction feedback, not
+decoration.
+- Buttons: soft `shadow-sm` at rest. On hover, step up to `shadow-md` and
+  lift ~1px (`-translate-y-px`). On active/press, drop back to
+  `translate-y-0` and `shadow-sm` — reads as a physical press, not a bounce.
+  Disabled buttons don't lift or gain shadow on hover.
+- Icon buttons (edit/delete/close): transparent at rest — no shadow, no
+  background. Hover adds a rounded (full-circle) neutral background, the
+  same lift/shadow as buttons above, and a color shift toward the action's
+  intent (blue-ish for edit/neutral actions, red for delete). This red is a
+  destructive-action affordance, not a data value, so it doesn't conflict
+  with the green/red P&L rule below — it never sits next to or represents a
+  number.
+- Cards/containers (summary cards, table wrappers) keep their existing
+  static `shadow-sm`, unchanged — that elevation signals grouping, not
+  interactivity, so it never moves or intensifies.
+- Every shadow stays soft and low-opacity (Tailwind's default `shadow-sm`/
+  `shadow-md` scale, ~150ms transition). No glow, no colored shadows, no
+  gradients — this is additive polish on "flat and quiet," not a departure
+  from it.
+
 ## Data display rules
 - Money values: always show currency, consistent decimal places, thousand
   separators (e.g. ฿12,450.00).
@@ -56,6 +78,13 @@ consumer app, not a bank's legacy dashboard.
 
 ## What to avoid
 - No gradients, neon colors, or heavy shadows/glow — keep it flat and quiet.
+  (Subtle hover/active depth on interactive elements is fine — see Depth &
+  elevation.)
+- All interactive elements (buttons, icon buttons, links, clickable rows,
+  dropdowns) must show `cursor: pointer` on hover — hard requirement, not
+  optional polish. Native `<button>` elements don't get this by default in
+  most browsers, so it has to be added explicitly.
 - No dense "spreadsheet-style" tables with tiny text — this is Phase 1's
   main view, it should feel premium, not like raw data dump.
-- No stock illustration/emoji clutter.
+- No stock illustration/emoji clutter. Icon buttons (edit/delete etc.) are
+  small inline SVGs matching the accent/neutral palette, not emoji.

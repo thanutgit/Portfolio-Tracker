@@ -26,7 +26,13 @@
       "Bash(curl -sS -X POST http://localhost:3000/api/refresh-crypto-prices)",
       "Bash(node smoke6.mjs)",
       "Bash(node smoke-poll.mjs)",
-      "Bash(node smoke-immediate.mjs)"
+      "Bash(node smoke-immediate.mjs)",
+      "Bash(node smoke-prices.mjs)",
+      "Bash(node smoke-prices-confirm.mjs)",
+      "Bash(node smoke-verify.mjs)",
+      "Bash(node smoke-div-edit.mjs)",
+      "Bash(node smoke-depth.mjs)",
+      "Bash(git checkout *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Thanu\\Desktop\\PP\\Claude\\Portfolio Tracker\\src\\app\\api"

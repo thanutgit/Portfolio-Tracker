@@ -19,7 +19,7 @@ export function PortfolioPicker({ portfolios, selectedId, onChange }: Props) {
         id="portfolio"
         value={selectedId}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900"
+        className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900"
       >
         {portfolios.map((p) => (
           <option key={p.id} value={p.id}>

@@ -116,3 +116,32 @@ portfolio id.
 Auto-refresh (immediately on mount + every 60s after) already covers normal
 usage, so the button was redundant. Firing immediately on mount means an F5
 still gets a live price right away.
+
+## D26 — Symbol matching is case-insensitive and works for any asset, including crypto
+Simplest option — no special-casing to exclude crypto, since there's no clear
+benefit to blocking it.
+
+## D27 — Delimiter auto-detected once per paste (tab if present, else comma), not per line
+Matches actual behavior (copying from a spreadsheet = tabs, typing CSV by
+hand = commas) without needing a settings toggle.
+
+## D28 — Symbol lookup doesn't disambiguate by market
+All symbols in the current data are already unique. If a symbol collision
+across markets ever comes up, it'll be fixed then — not worth solving now.
+
+## D29 — Hard delete for dividends, no soft-delete flag
+Deletes the `transactions` row directly, rather than flagging it inactive.
+Simplest option, and matches how `/prices` already treats history
+(append-only, no edit trail). For a single-user app, recreating a deleted
+entry is trivial — the date/amount are already shown in the confirm dialog
+before deletion — so a soft-delete column that every query touching
+`transactions` would need to filter isn't worth it.
+
+## D30 — Delete icon's red is a destructive-action convention, not a P&L color
+Widely understood convention that never sits next to or represents a P&L
+number, so it doesn't conflict with DESIGN.md's green/red-is-P&L-only rule.
+
+## D31 — Portfolio picker (native `<select>`) has no lift/press animation
+Just `cursor-pointer` — the dropdown popup itself is rendered by the
+browser, so adding a lift effect would look inconsistent with native OS
+select behavior.
