@@ -6,6 +6,7 @@ import { formatMoney, formatPercent } from "@/lib/format";
 import { DIFF_WARNING_PCT } from "@/lib/constants";
 import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { CONTAINER_CLASS } from "@/lib/layout";
 
 interface AssetLite {
   id: string;
@@ -205,7 +206,7 @@ export default function PricesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-      <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+      <main className={`${CONTAINER_CLASS} py-10`}>
         <header className="mb-8">
           <h1 className="text-2xl font-semibold tracking-tight">Prices</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">

@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { usePortfolios } from "@/lib/hooks/usePortfolios";
 import { PortfolioPicker } from "@/components/PortfolioPicker";
 import { EmptyState } from "@/components/EmptyState";
+import { CONTAINER_CLASS } from "@/lib/layout";
 
 interface TargetRow {
   asset_id: string;
@@ -118,7 +119,7 @@ export default function TargetsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-      <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+      <main className={`${CONTAINER_CLASS} py-10`}>
         <header className="mb-8">
           <h1 className="text-2xl font-semibold tracking-tight">Targets</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">

@@ -947,3 +947,49 @@
   entry.
 - No data was created or modified this round — pure CSS/layout changes,
   verified read-only against the real Retirement portfolio.
+
+## 2026-07-06 — Site-wide responsive container: content now fills wide desktop screens instead of sitting in a narrow fixed column
+- New shared constant `CONTAINER_CLASS` in `src/lib/layout.ts`:
+  `mx-auto max-w-[1600px] px-4 sm:px-6 md:px-8 xl:px-12 2xl:px-16`. Applied
+  to every page's `<main>` (Overview, Holdings, Targets, Rebalancing,
+  Prices, Assets) and `NavBar`, replacing each page's own hardcoded
+  `max-w-*` string.
+  - **Found and fixed an existing inconsistency while doing this**: the
+    Overview page (`/`) was using `max-w-3xl` (768px) while every other
+    page used `max-w-5xl` (1024px) — Overview was already narrower than
+    the rest before this task, unrelated to today's ask but exactly the
+    kind of drift a shared constant now prevents.
+  - Mobile (<768px): unchanged — full width, small (`px-4`) padding.
+  - Tablet (768–1280px): full width, medium (`md:px-8`) padding.
+  - Desktop (1280–~1650px): content grows fluidly with the viewport (no
+    narrow cap forcing large empty side margins) — this was the actual
+    complaint, since the old `max-w-5xl`/`max-w-3xl` caps left big unused
+    margins on any screen wider than ~1024/768px.
+  - Very large screens: capped at `max-w-[1600px]`, centered, so line
+    lengths don't stretch to the point of being hard to read on an
+    ultrawide or 4K display.
+- Verified live via Playwright across 6 pages × 7 viewport widths (375,
+  768, 1024, 1280, 1440, 1920, 2560): confirmed every page's `<main>` and
+  the nav bar render at the **exact same width and left/right edges** at
+  every single width tested (`navAligned` true in all 42 combinations);
+  confirmed content grows continuously from 375px up through 1440px with
+  no premature cap; confirmed the container locks to exactly 1600px,
+  centered, at 1920px and 2560px (160px and 480px side margins
+  respectively). Screenshotted Holdings at 1440/1920/2560 to confirm it
+  reads as balanced, not stretched — as a side benefit, fund names in the
+  Name column that used to wrap across 3-4 lines at the old 1024px cap
+  now mostly fit on one line at typical laptop widths (1440px+), since the
+  table has more room to work with.
+  - The Holdings table's own `min-w-[720px]` floor (from the previous
+    round) still applies independently — mobile/tablet below ~768px still
+    scrolls horizontally as expected; that behavior is unchanged by this
+    container change.
+  - The handful of "429 Too Many Requests" console errors seen during
+    testing came from Supabase/CoinGecko rate limits triggered by rapidly
+    reloading 42 page combinations back-to-back in the test script itself
+    — unrelated to this change, not a real app issue.
+- DESIGN.md updated: documented `CONTAINER_CLASS` under "Layout &
+  spacing" as the one required container for every page and the nav, so a
+  future new page imports it instead of guessing a `max-w-*` value.
+- No data was created or modified — pure layout/CSS change, verified
+  read-only against the real Retirement portfolio.

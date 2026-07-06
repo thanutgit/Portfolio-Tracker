@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { CONTAINER_CLASS } from "@/lib/layout";
 
 const LINKS = [
   { href: "/holdings", label: "Holdings" },
@@ -25,7 +26,7 @@ export function NavBar() {
 
   return (
     <nav className="sticky top-0 z-40 border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-      <div className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3 text-sm sm:px-6 lg:px-8">
+      <div className={`${CONTAINER_CLASS} flex items-center gap-6 py-3 text-sm`}>
         <Link
           href="/"
           className="cursor-pointer text-lg font-semibold text-gray-900 transition-colors duration-150 hover:text-blue-600 dark:text-gray-100 dark:hover:text-blue-400"

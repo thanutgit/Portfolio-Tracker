@@ -51,6 +51,21 @@ glowing trend line), but still precise and trustworthy with real money.
   dark surfaces — cards should read as distinct panels floating slightly
   above the page background.
 - Rounded corners throughout.
+- **Every page must use `CONTAINER_CLASS` from `src/lib/layout.ts` as its
+  main container — never set a page-specific `max-width` by hand.**
+  (Lesson from a real bug: Overview once used its own `max-w-3xl` and
+  quietly ended up narrower than every other page.)
+- **Page container**: every page's `<main>` and the `NavBar` share one
+  constant, `CONTAINER_CLASS` in `src/lib/layout.ts`
+  (`mx-auto max-w-[1600px] px-4 sm:px-6 md:px-8 xl:px-12 2xl:px-16`) — full
+  width with small padding on mobile, growing padding through tablet
+  and desktop, fluid content width up to 1600px, then capped and centered
+  beyond that so very large monitors don't stretch content edge-to-edge.
+  Always import and use this constant rather than hardcoding a `max-w-*`
+  on a new page — that's what previously let the Overview page drift to a
+  narrower `max-w-3xl` while every other page used `max-w-5xl`, so nav and
+  page edges quietly stopped lining up. All pages and the nav must render
+  at the exact same width at every breakpoint.
 
 ## Depth & elevation
 - Cards: soft shadow + a subtle 1px border (border does more work than

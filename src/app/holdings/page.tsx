@@ -13,6 +13,7 @@ import { Toast } from "@/components/Toast";
 import { AllocationDonut } from "@/components/AllocationDonut";
 import type { DonutSegment } from "@/components/DonutChart";
 import { CHART_COLORS, UNCATEGORIZED_COLOR } from "@/lib/chartColors";
+import { CONTAINER_CLASS } from "@/lib/layout";
 import type { HoldingWithReturns } from "@/lib/types";
 import {
   formatDateTime,
@@ -319,7 +320,7 @@ function HoldingsPageContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-      <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+      <main className={`${CONTAINER_CLASS} py-10`}>
         <header className="mb-8">
           <h1 className="text-2xl font-semibold tracking-tight">Holdings</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
