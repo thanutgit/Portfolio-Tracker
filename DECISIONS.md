@@ -200,3 +200,44 @@ Keeps the app's single-accent-color rule intact, even though this is the
 first glow outside the previously-defined chart/badge scope — widens that
 scope to include the wordmark. Done via layered `text-shadow`, not a
 `drop-shadow` filter, for better control over the glow radius on text.
+
+## D43 — Buy/Sell toggle is neutral blue, not green/red
+Green/red is reserved for P&L only per DESIGN.md, even though Buy/Sell
+might intuitively seem to fit that color pairing.
+
+## D44 — Selling more than currently held warns in the preview dialog, doesn't hard-block
+The on-file holding can legitimately be out of sync with the real broker
+for other reasons (e.g. older transactions not fully entered yet) — the
+user should be able to decide for themselves.
+
+## D45 — "Add new asset" expands inline in the same form, not a nested modal
+Matches the literal instruction, and avoids the complexity of stacking one
+modal on top of another.
+
+## D46 — Asset-creation logic extracted to `src/lib/assets.ts`, shared between `NewAssetModal` and the transaction form
+Reduces duplication — both places need the exact same logic.
+
+## D47 — Symbol shown disabled, not hidden, in the asset edit form
+Keeps visible context of which asset is being edited, while making clear
+it can't be changed (it's the primary identifier).
+
+## D48 — Asset update logic written inline in `EditAssetModal`, not extracted to `src/lib/assets.ts`
+Only one call site right now, unlike `createAsset()` which is shared
+between two. Not worth extracting until a second consumer exists.
+
+## D49 — Deleted `NewAssetModal.tsx` entirely instead of just unlinking it
+Confirmed zero remaining consumers — genuine dead code. Deleting it
+outright avoids leaving confusing unused files around for later.
+
+## D50 — Symbol is now editable in the asset edit form (supersedes D47)
+A safe rename path now exists: a duplicate check before saving, plus a
+clear warning that renaming doesn't affect transaction history, since
+transactions reference the asset by internal id, not by symbol.
+
+## D51 — "Can't delete" (asset has linked transactions) shows an info dialog explaining why, instead of hiding/disabling the delete button
+The user should see a clear reason it's blocked, rather than a button
+that does nothing with no explanation.
+
+## D52 — Extracted `isSymbolTaken()` as a shared helper in `src/lib/assets.ts`
+Used by both `createAsset()` and the edit form's rename check, so the
+duplicate-symbol lookup logic isn't duplicated between the two.

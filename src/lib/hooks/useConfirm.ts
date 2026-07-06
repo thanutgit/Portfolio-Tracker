@@ -7,6 +7,8 @@ export interface ConfirmOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: "default" | "danger";
+  /** Hide the Cancel button for info-only dialogs with a single acknowledgement action. */
+  hideCancel?: boolean;
 }
 
 export interface ConfirmState extends ConfirmOptions {

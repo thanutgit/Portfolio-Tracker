@@ -44,3 +44,14 @@ export interface DividendTransaction {
   tax: string; // withholding tax amount
   fee: string;
 }
+
+export interface Asset {
+  id: string;
+  symbol: string;
+  name: string;
+  asset_type: string;
+  currency: string;
+  sector: string | null;
+  country: string | null;
+  tax_bucket: string;
+}

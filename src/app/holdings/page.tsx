@@ -8,6 +8,7 @@ import { PortfolioPicker } from "@/components/PortfolioPicker";
 import { SummaryCard } from "@/components/SummaryCard";
 import { EmptyState } from "@/components/EmptyState";
 import { DividendModal } from "@/components/DividendModal";
+import { TransactionModal } from "@/components/TransactionModal";
 import { Toast } from "@/components/Toast";
 import type { HoldingWithReturns } from "@/lib/types";
 import {
@@ -64,7 +65,8 @@ function HoldingsPageContent() {
   const [dividendTarget, setDividendTarget] = useState<HoldingWithReturns | null>(null);
   const [cryptoLastUpdated, setCryptoLastUpdated] = useState<string | null>(null);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
-  const [snapshotToast, setSnapshotToast] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showAddTransaction, setShowAddTransaction] = useState(false);
 
   // Honors an incoming ?portfolio=<id> (e.g. from the Overview page's
   // portfolio cards) as the initial selection, without changing the
@@ -164,9 +166,15 @@ function HoldingsPageContent() {
     if (error) {
       setError(error.message);
     } else {
-      setSnapshotToast("Saved today's value.");
+      setToastMessage("Saved today's value.");
     }
     setSavingSnapshot(false);
+  }
+
+  async function handleTransactionSaved() {
+    setShowAddTransaction(false);
+    setToastMessage("Transaction saved.");
+    await loadHoldings();
   }
 
   useEffect(() => {
@@ -284,13 +292,21 @@ function HoldingsPageContent() {
                   ? `Crypto prices last updated: ${formatDateTime(cryptoLastUpdated)}`
                   : "Crypto prices not yet fetched"}
               </p>
-              <button
-                onClick={handleSaveSnapshot}
-                disabled={savingSnapshot || holdings.length === 0}
-                className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-gray-50 hover:shadow-md active:translate-y-0 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                {savingSnapshot ? "Saving…" : "Save today's value"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowAddTransaction(true)}
+                  className="cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-blue-700 hover:shadow-md active:translate-y-0 active:shadow-sm"
+                >
+                  + Add transaction
+                </button>
+                <button
+                  onClick={handleSaveSnapshot}
+                  disabled={savingSnapshot || holdings.length === 0}
+                  className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-gray-50 hover:shadow-md active:translate-y-0 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  {savingSnapshot ? "Saving…" : "Save today's value"}
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -449,7 +465,15 @@ function HoldingsPageContent() {
         />
       )}
 
-      <Toast message={snapshotToast} onDismiss={() => setSnapshotToast(null)} />
+      {showAddTransaction && selectedId && (
+        <TransactionModal
+          portfolioId={selectedId}
+          onClose={() => setShowAddTransaction(false)}
+          onSaved={handleTransactionSaved}
+        />
+      )}
+
+      <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>
   );
 }

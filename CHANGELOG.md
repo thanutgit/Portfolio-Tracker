@@ -513,3 +513,218 @@
   Tracker, Holdings, Targets, Rebalancing, Prices" (no "Overview"), and a
   screenshot confirms the glow renders and the wordmark is visibly larger
   than the tabs. No console errors.
+
+## 2026-07-06 — Web forms for new portfolios and new assets (no more raw SQL for these two)
+- No "mockup" with a dashed "+ New portfolio" placement actually existed
+  anywhere in the repo (checked, same as prior instances) — used the
+  existing `EmptyState` dashed-border style as the natural precedent
+  instead of guessing at an unseen reference.
+- **New portfolio**: dashed "+ New portfolio" row at the end of the
+  Overview page's card list (also shown alone when there are zero
+  portfolios, replacing the old static-text empty state). Opens
+  `NewPortfolioModal` — just a name field, `base_currency` hardcoded to
+  `'THB'` (not exposed in the form, per the ask). On success: closes,
+  shows a "Portfolio created." toast, and reloads the card list in place
+  (no navigation needed — already on the page that shows it).
+- **New asset**: new `/assets` page (added to the nav) listing every
+  existing asset (symbol, name, type, currency, sector, country, tax
+  bucket) plus a "+ New asset" button opening `NewAssetModal` with all
+  the requested fields (symbol, name, asset_type dropdown, currency
+  dropdown, sector/country optional text, tax_bucket dropdown).
+- **Duplicate-symbol handling — important nuance found**: the schema's
+  unique constraint is on `(symbol, market)`, but this form never
+  collects `market` (always `NULL`), and Postgres treats `NULL != NULL`
+  for uniqueness — so the existing constraint would **not** reliably
+  catch a duplicate symbol here. Added an explicit case-insensitive
+  pre-check query before inserting, plus a fallback translation of a raw
+  `23505`/"duplicate key" error just in case the constraint does fire
+  from some other path — both show the same friendly "An asset with
+  symbol "X" already exists." message instead of a raw SQL error.
+- Both new modals reuse the same dark-card/backdrop-blur/button-depth
+  style as `ConfirmDialog` — no `window.confirm`/`alert` anywhere.
+- Verified live end-to-end: existing assets list loads and shows real
+  data; tried creating a duplicate "BTC" asset and got the friendly error
+  (not raw SQL); created a genuine new test asset — toast shown, row
+  appeared in the table; created a test portfolio from Overview — toast
+  shown, new card appeared immediately (0 holdings, ฿0.00, no %
+  badge, matching D41). No native dialogs fired, no console errors.
+- **Left test data in the live database**: one asset (`TESTASSET1`) and
+  one portfolio ("Playwright Test Portfolio") from this verification.
+  Could not clean these up — reading `.env.local` to script a delete is
+  blocked by a safety hook (by design, since it holds credentials), and
+  there's no delete UI built yet for either. Flagged to the user to
+  remove manually via the Supabase dashboard.
+- Design decisions to consider logging in DECISIONS.md (not yet saved):
+  (1) explicit pre-check query for duplicate symbols rather than relying
+  on the DB constraint, since the constraint doesn't reliably fire here;
+  (2) currency is a dropdown of the same 5 currencies already in
+  `format.ts`'s `CURRENCY_SYMBOLS`, not free text, so `formatMoney` never
+  falls back to an unrecognized-currency prefix; (3) `/assets` also lists
+  existing assets (not just the form) so the duplicate-symbol check has
+  a visual complement — see them before you try to add one.
+
+## 2026-07-06 — Web form for buy/sell transactions (highest-risk feature so far)
+- Extracted asset-creation logic (duplicate-symbol pre-check + insert) out
+  of `NewAssetModal` into a shared `src/lib/assets.ts` (`createAsset()`,
+  plus the `ASSET_TYPES`/`CURRENCIES`/`TAX_BUCKETS` constant lists), since
+  the same logic is now needed in two places — `NewAssetModal` and the new
+  transaction modal's inline "add new asset." `NewAssetModal` refactored to
+  use it; behavior unchanged, verified via lint/build.
+- New "+ Add transaction" button on the Holdings page (next to "Save
+  today's value"), opening `TransactionModal` for the currently selected
+  portfolio:
+  - **Type**: Buy/Sell as two big toggle buttons, not a dropdown — harder
+    to misclick. Deliberately NOT colored green/red (tempting, but that's
+    reserved for P&L per DESIGN.md) — both use the same neutral
+    active-blue-pill treatment as the nav tabs.
+  - **Asset**: a combobox searching existing assets by symbol/name, with
+    a "+ Add new asset" option that **expands an inline mini-form in
+    place** (not a separate modal-on-modal) — symbol/name/asset_type/
+    currency/sector/country/tax_bucket, same fields as the standalone
+    `/assets` form. Creating it auto-selects the new asset and collapses
+    back to the normal combobox view.
+  - **Quantity** labeled "Quantity (units/shares)" and **Price** labeled
+    "Price per unit (CURRENCY)" (currency shown dynamically once an asset
+    is picked) — separate, clearly-labeled fields specifically to guard
+    against the quantity/price mixup from GOTCHAS.md #1.
+  - **Preview-before-save**: submitting doesn't insert immediately — it
+    builds a plain-language summary ("You're about to buy/sell N units of
+    SYMBOL at PRICE per unit — total AMOUNT (incl. fee).") and requires
+    confirming via the existing `ConfirmDialog`/`useConfirm()` (no
+    `window.confirm`).
+  - **Oversell warning**: for a "sell," queries the `holdings` view for
+    the current quantity of that asset in that portfolio; if the entered
+    quantity exceeds it, an extra warning line is appended to the same
+    preview message and the confirm button switches to the red "danger"
+    variant (same convention as the delete-icon red) — doesn't block, per
+    the ask, since the on-file holding can legitimately be out of sync
+    with the actual broker for other reasons.
+  - **On success**: closes the modal, shows a "Transaction saved." toast,
+    and calls the existing `loadHoldings()` — the table reflects the new
+    quantity/avg_cost immediately, no page reload.
+- Verified live and carefully, given the risk level:
+  - Created a new asset (`TESTXN1`) via the inline mini-form mid-transaction
+    and confirmed it auto-selected correctly.
+  - Confirmed the preview dialog's exact text before committing: "You're
+    about to buy 1 unit of TESTXN1 at ฿100.00 per unit — total ฿100.00
+    (incl. fee)." — matches the entered quantity/price/fee exactly.
+  - Confirmed the buy for real (the one deliberate live write) and verified
+    the Holdings table updated immediately with no reload: `TESTXN1` row
+    appeared with Qty 1, Avg Cost ฿100.00, Last Price/Market Value
+    correctly "—" (no price exists yet), Unrealized P&L ฿0.00 in neutral
+    gray (not colored, since it's exactly zero).
+  - Separately tested selling 5 units of `TESTXN1` (only 1 held) —
+    confirmed the exact warning text ("⚠ You currently hold 1 unit of
+    TESTXN1 — this sells more than you have.") and the red "Confirm sell"
+    button, then **cancelled** rather than completing it, to avoid
+    creating a nonsensical negative-holding test transaction.
+  - Confirmed zero native `window.confirm`/`alert` dialogs fired
+    throughout, and no console errors.
+- **Left test data in the live database**: one asset (`TESTXN1`) and one
+  buy transaction (1 unit @ ฿100.00) against the Retirement portfolio.
+  Same limitation as before — no delete UI for assets/transactions yet,
+  and reading `.env.local` to script a cleanup is blocked by the safety
+  hook. Flagged for manual removal via the Supabase dashboard.
+- Deposit/withdraw/split forms deliberately not built this round, per the
+  ask — buy/sell only.
+- Design decisions to consider logging in DECISIONS.md (not yet saved):
+  (1) Buy/Sell toggle uses neutral blue, not green/red, to keep those
+  colors reserved for P&L; (2) the sell-quantity check warns via the
+  preview dialog rather than blocking, since holdings can legitimately
+  differ from the real broker for other reasons; (3) the "add new asset"
+  sub-flow expands inline in the same modal rather than opening
+  `NewAssetModal` as a nested modal, both per the literal ask and to avoid
+  modal-on-modal z-index/backdrop complexity; (4) extracted asset-creation
+  logic into `src/lib/assets.ts` now that it's used in two places.
+
+## 2026-07-06 — Assets page: edit form replaces "+ New asset", asset creation consolidated into the transaction form
+- `/assets`: removed the "+ New asset" header button and its modal wiring.
+  Asset creation now happens exclusively via the transaction form's
+  "+ Add new asset" combobox flow (built last round) — no duplicate entry
+  point needed here.
+- Added a pencil edit-icon button at the end of each table row, styled
+  identically to the edit icon in `DividendModal` (transparent at rest,
+  circular gray hover background, blue on hover, matching dark-mode
+  variants).
+- New `src/components/EditAssetModal.tsx`: custom modal (no
+  `window.prompt`) pre-filled from the clicked asset. Editable: name,
+  asset_type, currency, sector, country, tax_bucket. **Symbol is shown as a
+  disabled, read-only input** — it's the identifier transactions reference,
+  so it can't be changed here.
+- On save: `update`s the `assets` row directly (no new helper — this is a
+  single call site, unlike `createAsset()` which serves two callers), shows
+  an "Asset updated." toast, closes the modal, and reloads the assets list
+  — table reflects the change immediately, no page refresh.
+- Deleting assets deliberately NOT built this round — an asset with
+  transactions already tied to it needs more careful handling (reassign?
+  block? cascade?), left for a separate task.
+- **Deleted `src/components/NewAssetModal.tsx`**: its only remaining
+  consumer was the button just removed from `/assets`; confirmed via grep
+  it had zero other references. Updated a stale comment in
+  `src/lib/assets.ts` that named it as a consumer of `createAsset()`.
+- Verified live: confirmed the "+ New asset" button is gone, all 10 existing
+  assets show a working pencil icon, the edit modal opens pre-filled with
+  the symbol field genuinely disabled, changing the Sector field and saving
+  shows the "Asset updated." toast and updates the table row instantly, and
+  zero native dialogs/console errors fired. The one live edit made during
+  testing (a temporary "TestSectorXYZ" sector value) was reverted back to
+  the asset's original value before finishing — no lasting test-data change
+  this round.
+- Design decisions to consider logging in DECISIONS.md (not yet saved):
+  (1) the symbol field is shown but disabled, not simply hidden, so the
+  user can still see which asset they're editing; (2) the update call is
+  inline in `EditAssetModal` rather than a shared `updateAsset()` helper in
+  `src/lib/assets.ts`, since (unlike creation) there's only one call site
+  today; (3) `NewAssetModal.tsx` was deleted outright rather than left
+  unused, per the project convention of not keeping dead code around.
+
+## 2026-07-06 — Asset symbol becomes editable; asset delete button added
+- **Symbol is now editable** in `EditAssetModal` (previously disabled —
+  see D47/the entry above). Rationale: symbol typos at creation time are
+  real, and until now the only fix was the SQL Editor.
+  - Before saving a changed symbol, checks it's not already used by another
+    asset (`isSymbolTaken()`, new shared helper in `src/lib/assets.ts`,
+    also now used internally by `createAsset()` to remove duplicated
+    lookup logic) — shows the same friendly "already exists" message as
+    asset creation, with a `23505`/duplicate-key DB error as a fallback
+    translation.
+  - If the symbol actually changed, a `ConfirmDialog` warns first: "won't
+    affect this asset's existing transaction history — transactions
+    reference it by internal ID, not by symbol." Only fires when the
+    symbol field is actually edited — saving other fields unchanged skips
+    it.
+- **Added a delete (trash) icon** next to the edit icon on every Assets
+  row, same hover-red destructive-action styling as the delete icon in
+  `DividendModal`.
+  - Before deleting, counts `transactions` rows referencing the asset
+    (`asset_id` has `on delete restrict` in the schema, so the DB would
+    reject this anyway — checking first gives a clear message instead of a
+    raw constraint error).
+  - **0 transactions**: normal `ConfirmDialog` ("Delete "X" — Name? This
+    can't be undone.", red confirm button) → deletes on confirm → "Asset
+    deleted." toast → table updates immediately.
+  - **>0 transactions**: a blocking, info-only dialog ("has N
+    transaction(s) linked to it. Delete those first...") with only an "OK"
+    button — no path to delete from here. Required adding a new
+    `hideCancel` option to `ConfirmOptions`/`ConfirmDialog` (hides the
+    Cancel button for single-action info dialogs); this is a small,
+    reusable addition to the shared confirm system, not one-off code.
+- Verified live against real data: attempted to delete `TESTXN1` (has 1
+  transaction) — got the blocking dialog with the correct count, no delete
+  happened; renamed `TESTXN1`'s symbol to `TESTXN1RENAMED` in the edit
+  form, saw the correct warning dialog naming both the old and new symbol,
+  then cancelled (no change committed); deleted `TESTASSET1` (0
+  transactions) for real — got the normal confirm dialog, confirmed, saw
+  the "Asset deleted." toast, and the row disappeared from the table
+  immediately. This also incidentally cleaned up one piece of leftover
+  test data from an earlier round. Confirmed zero native dialogs and zero
+  console errors throughout.
+- Design decisions to consider logging in DECISIONS.md (not yet saved):
+  (1) reversing the earlier "symbol is disabled" decision now that a safe
+  rename path (dedup check + explicit warning) exists; (2) the duplicate
+  vs. no-duplicate transaction-count branch uses an info-only dialog
+  (new `hideCancel` option) rather than just disabling/hiding the delete
+  button when transactions exist, so the user gets an explicit reason
+  instead of a button that mysteriously does nothing; (3) extracted
+  `isSymbolTaken()` as a shared helper now used by both `createAsset()`
+  and the edit form's rename check.

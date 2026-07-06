@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/targets", label: "Targets" },
   { href: "/rebalancing", label: "Rebalancing" },
   { href: "/prices", label: "Prices" },
+  { href: "/assets", label: "Assets" },
 ];
 
 const INACTIVE_CLASS =

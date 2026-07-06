@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { EmptyState } from "@/components/EmptyState";
+import { NewPortfolioModal } from "@/components/NewPortfolioModal";
+import { Toast } from "@/components/Toast";
 import type { HoldingWithReturns, Portfolio } from "@/lib/types";
 import { formatMoney, formatPercent, pnlBadgeClass } from "@/lib/format";
 
@@ -44,6 +46,20 @@ function ChevronRightIcon() {
   );
 }
 
+function PlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className="h-4 w-4"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10 4v12M4 10h12" />
+    </svg>
+  );
+}
+
 interface PortfolioSummary {
   portfolio: Portfolio;
   holdingsCount: number;
@@ -56,52 +72,63 @@ export default function OverviewPage() {
   const [summaries, setSummaries] = useState<PortfolioSummary[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showNewPortfolio, setShowNewPortfolio] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  async function loadSummaries() {
+    setLoading(true);
+    setError(null);
+    const [portfoliosRes, holdingsRes] = await Promise.all([
+      supabase.from("portfolios").select("id, name, base_currency").order("name"),
+      supabase.from("holdings_with_returns").select("*"),
+    ]);
+    if (portfoliosRes.error) {
+      setError(portfoliosRes.error.message);
+      setLoading(false);
+      return;
+    }
+    if (holdingsRes.error) {
+      setError(holdingsRes.error.message);
+      setLoading(false);
+      return;
+    }
+
+    const holdingsByPortfolio = new Map<string, HoldingWithReturns[]>();
+    for (const h of (holdingsRes.data ?? []) as HoldingWithReturns[]) {
+      const list = holdingsByPortfolio.get(h.portfolio_id) ?? [];
+      list.push(h);
+      holdingsByPortfolio.set(h.portfolio_id, list);
+    }
+
+    const result: PortfolioSummary[] = (portfoliosRes.data ?? []).map((portfolio) => {
+      const holdings = holdingsByPortfolio.get(portfolio.id) ?? [];
+      const totalValue = holdings.reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
+      const totalCostBasis = holdings.reduce((sum, h) => sum + Number(h.cost_basis ?? 0), 0);
+      const totalReturn = holdings.reduce((sum, h) => sum + Number(h.total_return ?? 0), 0);
+      const totalReturnPct = totalCostBasis !== 0 ? (totalReturn / totalCostBasis) * 100 : null;
+      return {
+        portfolio,
+        holdingsCount: holdings.length,
+        totalValue,
+        totalReturn,
+        totalReturnPct,
+      };
+    });
+
+    setSummaries(result);
+    setLoading(false);
+  }
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      setError(null);
-      const [portfoliosRes, holdingsRes] = await Promise.all([
-        supabase.from("portfolios").select("id, name, base_currency").order("name"),
-        supabase.from("holdings_with_returns").select("*"),
-      ]);
-      if (portfoliosRes.error) {
-        setError(portfoliosRes.error.message);
-        setLoading(false);
-        return;
-      }
-      if (holdingsRes.error) {
-        setError(holdingsRes.error.message);
-        setLoading(false);
-        return;
-      }
-
-      const holdingsByPortfolio = new Map<string, HoldingWithReturns[]>();
-      for (const h of (holdingsRes.data ?? []) as HoldingWithReturns[]) {
-        const list = holdingsByPortfolio.get(h.portfolio_id) ?? [];
-        list.push(h);
-        holdingsByPortfolio.set(h.portfolio_id, list);
-      }
-
-      const result: PortfolioSummary[] = (portfoliosRes.data ?? []).map((portfolio) => {
-        const holdings = holdingsByPortfolio.get(portfolio.id) ?? [];
-        const totalValue = holdings.reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
-        const totalCostBasis = holdings.reduce((sum, h) => sum + Number(h.cost_basis ?? 0), 0);
-        const totalReturn = holdings.reduce((sum, h) => sum + Number(h.total_return ?? 0), 0);
-        const totalReturnPct = totalCostBasis !== 0 ? (totalReturn / totalCostBasis) * 100 : null;
-        return {
-          portfolio,
-          holdingsCount: holdings.length,
-          totalValue,
-          totalReturn,
-          totalReturnPct,
-        };
-      });
-
-      setSummaries(result);
-      setLoading(false);
-    })();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadSummaries();
   }, []);
+
+  async function handlePortfolioCreated() {
+    setShowNewPortfolio(false);
+    setToastMessage("Portfolio created.");
+    await loadSummaries();
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
@@ -122,10 +149,19 @@ export default function OverviewPage() {
         {loading ? (
           <p className="text-sm text-gray-500 dark:text-gray-400">Loading portfolios…</p>
         ) : !summaries || summaries.length === 0 ? (
-          <EmptyState
-            title="No portfolios yet"
-            description="Create a portfolio (in the portfolios table) to get started."
-          />
+          <div className="space-y-3">
+            <EmptyState
+              title="No portfolios yet"
+              description="Create one below to get started."
+            />
+            <button
+              onClick={() => setShowNewPortfolio(true)}
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-white p-5 text-sm font-medium text-gray-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-blue-500/50 hover:text-blue-600 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-blue-400/50 dark:hover:text-blue-400"
+            >
+              <PlusIcon />
+              New portfolio
+            </button>
+          </div>
         ) : (
           <div className="space-y-3">
             {summaries.map(({ portfolio, holdingsCount, totalValue, totalReturn, totalReturnPct }) => (
@@ -165,9 +201,26 @@ export default function OverviewPage() {
                 </div>
               </Link>
             ))}
+
+            <button
+              onClick={() => setShowNewPortfolio(true)}
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-white p-5 text-sm font-medium text-gray-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-blue-500/50 hover:text-blue-600 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-blue-400/50 dark:hover:text-blue-400"
+            >
+              <PlusIcon />
+              New portfolio
+            </button>
           </div>
         )}
       </main>
+
+      {showNewPortfolio && (
+        <NewPortfolioModal
+          onClose={() => setShowNewPortfolio(false)}
+          onCreated={handlePortfolioCreated}
+        />
+      )}
+
+      <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>
   );
 }
