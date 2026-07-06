@@ -64,6 +64,37 @@ function groupByDimension(
   });
 }
 
+// One slice per holding (not merged by sector) — labeled "Symbol (sector)"
+// so each slice is identifiable by the asset it represents, not just the
+// sector text (which in this data is often a fund-specific description
+// rather than a short, shared category name).
+function groupBySymbolWithSector(
+  holdings: HoldingWithReturns[],
+  assetInfo: Map<string, AssetInfo>
+): DonutSegment[] {
+  const rows = holdings
+    .map((h) => {
+      const rawSector = assetInfo.get(h.asset_id)?.sector?.trim();
+      return {
+        label: `${h.symbol} (${rawSector ? rawSector : UNCATEGORIZED})`,
+        isUncategorized: !rawSector,
+        value: Number(h.market_value ?? 0),
+      };
+    })
+    .filter((r) => r.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  let colorIndex = 0;
+  return rows.map((r) => {
+    if (r.isUncategorized) {
+      return { label: r.label, value: r.value, color: UNCATEGORIZED_COLOR };
+    }
+    const color = CHART_COLORS[colorIndex % CHART_COLORS.length];
+    colorIndex += 1;
+    return { label: r.label, value: r.value, color };
+  });
+}
+
 function PencilIcon() {
   return (
     <svg
@@ -315,7 +346,7 @@ function HoldingsPageContent() {
   const totalReturn = holdings.reduce((sum, h) => sum + Number(h.total_return ?? 0), 0);
   const totalReturnPct = totalCostBasis !== 0 ? (totalReturn / totalCostBasis) * 100 : null;
 
-  const bySector = groupByDimension(holdings, assetInfo, "sector");
+  const bySector = groupBySymbolWithSector(holdings, assetInfo);
   const byCountry = groupByDimension(holdings, assetInfo, "country");
 
   return (

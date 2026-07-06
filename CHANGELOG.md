@@ -993,3 +993,16 @@
   future new page imports it instead of guessing a `max-w-*` value.
 - No data was created or modified — pure layout/CSS change, verified
   read-only against the real Retirement portfolio.
+
+## 2026-07-06 — "By sector" donut labels each slice "Symbol (sector)"
+- `holdings/page.tsx`: added `groupBySymbolWithSector()`, used only for
+  the "By sector" chart — one slice per holding (not merged by sector
+  text), labeled `"${symbol} (${sector})"` (or `"${symbol}
+  (Uncategorized)"` if the asset has no sector). Fixes the legend reading
+  as a bare sector description (e.g. "Broad Market (China Equity)") with
+  no indication of which holding it was. "By country" is unchanged —
+  still grouped/labeled by country name only, since that ask was scoped
+  to sector only.
+- Verified live: legend now reads e.g. "SCBCHAE (Broad Market (China
+  Equity))", "BTC (Cryptocurrency)" — confirmed against the real
+  Retirement portfolio, read-only.
