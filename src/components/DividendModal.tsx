@@ -5,6 +5,9 @@ import { supabase } from "@/lib/supabase";
 import type { DividendTransaction } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { DIFF_WARNING_PCT } from "@/lib/constants";
+import { useConfirm } from "@/lib/hooks/useConfirm";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Toast } from "@/components/Toast";
 
 interface Props {
   portfolioId: string;
@@ -73,6 +76,8 @@ export function DividendModal({
   const [tax, setTax] = useState("0");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { confirm, confirmState, handleConfirm, handleCancel } = useConfirm();
 
   async function loadHistory() {
     setLoadingHistory(true);
@@ -114,8 +119,9 @@ export function DividendModal({
   }
 
   async function handleDeleteClick(h: DividendTransaction) {
-    const confirmed = window.confirm(
-      `Delete the ${formatMoney(Number(h.price), currency)} dividend on ${h.trade_date}? This can't be undone.`
+    const confirmed = await confirm(
+      `Delete the ${formatMoney(Number(h.price), currency)} dividend on ${h.trade_date}? This can't be undone.`,
+      { title: "Delete dividend?", confirmLabel: "Delete", variant: "danger" }
     );
     if (!confirmed) return;
 
@@ -128,6 +134,7 @@ export function DividendModal({
     if (editingId === h.id) resetForm();
     await loadHistory();
     onSaved();
+    setToastMessage("Dividend deleted.");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -150,8 +157,9 @@ export function DividendModal({
             ? Math.abs(((amountNum - originalAmount) / originalAmount) * 100)
             : 0;
         if (diffPct > DIFF_WARNING_PCT) {
-          const confirmed = window.confirm(
-            `You're changing the amount from ${formatMoney(originalAmount, currency)} to ${formatMoney(amountNum, currency)} (${diffPct.toFixed(0)}% difference). Continue?`
+          const confirmed = await confirm(
+            `You're changing the amount from ${formatMoney(originalAmount, currency)} to ${formatMoney(amountNum, currency)} (${diffPct.toFixed(0)}% difference). Continue?`,
+            { title: "Large change detected", confirmLabel: "Continue" }
           );
           if (!confirmed) return;
         }
@@ -171,6 +179,7 @@ export function DividendModal({
       resetForm();
       await loadHistory();
       onSaved();
+      setToastMessage("Dividend updated.");
       return;
     }
 
@@ -179,8 +188,9 @@ export function DividendModal({
       const existing = duplicates
         .map((d) => formatMoney(Number(d.price), currency))
         .join(", ");
-      const confirmed = window.confirm(
-        `There's already a dividend entry on ${date} for ${symbol} (${existing}). Add another one anyway?`
+      const confirmed = await confirm(
+        `There's already a dividend entry on ${date} for ${symbol} (${existing}). Add another one anyway?`,
+        { title: "Duplicate date", confirmLabel: "Add anyway" }
       );
       if (!confirmed) return;
     }
@@ -206,6 +216,7 @@ export function DividendModal({
     resetForm();
     await loadHistory();
     onSaved();
+    setToastMessage("Dividend saved.");
   }
 
   return (
@@ -370,6 +381,9 @@ export function DividendModal({
           </div>
         </form>
       </div>
+
+      <ConfirmDialog state={confirmState} onConfirm={handleConfirm} onCancel={handleCancel} />
+      <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>
   );
 }

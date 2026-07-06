@@ -32,6 +32,21 @@ Tables:
 - `prices` — latest price per asset (source: manual/csv/api).
 - `targets` — desired allocation per asset (target_pct, drift_threshold),
   added in Phase 2. See ROADMAP.md and DECISIONS.md D14–D16.
+- `portfolio_snapshots` — daily total-value history per portfolio, for a
+  future growth chart. Added Phase 4 (snapshots slice only — no chart
+  yet). Columns: `id`, `portfolio_id`, `snapshot_date`, `total_value`,
+  `total_cost`, `cash_value`, `created_at`. `unique (portfolio_id,
+  snapshot_date)` — at most one row per portfolio per day; writes are
+  always an upsert on that pair, never a plain insert (see GOTCHAS.md #1).
+  `total_value` / `total_cost` are computed client-side by summing
+  `holdings_with_returns.market_value` / `.cost_basis` for the *current*
+  holdings at the moment the Holdings page loads (or the "Save today's
+  value" button is clicked) — NOT reconstructed retroactively from
+  historical `transactions` + `prices` for past dates. `cash_value` needs
+  each holding's `asset_type`, which isn't in `holdings`/
+  `holdings_with_returns`, so it's fetched via one small separate `assets`
+  query at snapshot-time only, rather than extending either view. See
+  migrations/0005_add_portfolio_snapshots.sql and DECISIONS.md D35–D37.
 
 Views (computed, read-only):
 - `latest_prices` — newest price per asset.
@@ -82,3 +97,15 @@ Thai funds have no public price API and stay manual. See DECISIONS.md.
 - Money math in decimal/`numeric`, never floating point.
 - Keep data fetching and secrets server-side where sensible.
 - Ask before adding a dependency; don't reorganize structure without asking.
+
+## Dark mode
+Class-based, not OS-preference-based: `globals.css` defines
+`@custom-variant dark (&:where(.dark, .dark *))`, and `<html>` in
+`layout.tsx` hardcodes the `dark` class, so every `dark:` Tailwind utility
+across the app applies unconditionally — dark is the default regardless of
+the visitor's OS `prefers-color-scheme`. There is currently no UI control
+that removes the class, so light mode (the `dark:`-unprefixed classes,
+still present throughout every component) isn't reachable by users yet — a
+future toggle would just add/remove `dark` on `<html>` (e.g. persisted to
+`localStorage`); no component classNames need to change for that. See
+DECISIONS.md.

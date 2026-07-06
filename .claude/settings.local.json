@@ -32,7 +32,17 @@
       "Bash(node smoke-verify.mjs)",
       "Bash(node smoke-div-edit.mjs)",
       "Bash(node smoke-depth.mjs)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(node smoke-reskin.mjs)",
+      "Bash(node smoke-reskin2.mjs)",
+      "Bash(node smoke-modal.mjs)",
+      "Bash(node smoke-toast.mjs)",
+      "Bash(node smoke-toast2.mjs)",
+      "Bash(node shot2.mjs)",
+      "Bash(node smoke-snapshot.mjs)",
+      "Bash(node smoke-overview.mjs)",
+      "Bash(node smoke-navfix.mjs)",
+      "Bash(node smoke-navfix2.mjs)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Thanu\\Desktop\\PP\\Claude\\Portfolio Tracker\\src\\app\\api"

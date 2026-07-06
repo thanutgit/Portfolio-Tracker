@@ -1,90 +1,154 @@
 # Design
 
-Visual direction: clean, modern fintech (think Stripe / Notion) — light and
-airy by default, quiet and precise. Not playful, not heavy/corporate-bank.
-Numbers are the hero; the UI should get out of their way.
+Visual direction: dark-first, premium fintech/AI-tool feel — bold headline
+numbers, a glowing accent chart, calm dark surfaces. Confident and modern,
+not playful, not a flat corporate dashboard. Numbers are still the hero; the
+UI frames them, it doesn't compete with them.
+
+(Changed from the original light/Stripe-Notion direction — see DECISIONS.md
+for when/why. This file describes the CURRENT direction; treat it as
+authoritative over any earlier description.)
 
 ## Tone in one line
-"A calm, precise tool a professional trusts with their money" — not a
-consumer app, not a bank's legacy dashboard.
+"A confident, AI-era wealth tool" — dark, bold, a little bit alive (the
+glowing trend line), but still precise and trustworthy with real money.
 
 ## Color
-- Neutral base: white / very light gray surfaces. Avoid pure black text —
-  use dark gray (`gray-900`-ish) for primary text.
-- One accent color for interactive elements (links, primary buttons, active
-  states). Keep it restrained — not the star of the page.
-- Financial semantics use conventional colors: gains = green, losses = red.
-  Never repurpose green/red for anything else in the UI (avoid confusion with
-  P&L).
-- Dark mode is a first-class palette swap, not an afterthought — every color
-  above needs a dark-mode equivalent (dark surfaces, light text, same accent
-  hue adjusted for contrast). Support both; let the user (or system
-  preference) toggle.
+- Dark is the PRIMARY and default mode: near-black page background
+  (`gray-950`-ish), slightly lighter card surfaces (`gray-900`-ish) with a
+  soft 1px border to separate cards from the background.
+- Light mode still exists as a secondary, user-toggleable option — same
+  structure, inverted surfaces — but dark is what the app opens in by
+  default and what gets primary design attention.
+- Accent color: BLUE (not green — green is reserved for gains, see below).
+  Used for primary buttons, active nav state, links, the portfolio trend
+  chart line, and badges like the "+4.2%"-style summary chip. The accent can
+  glow — see Depth & elevation.
+- Financial semantics unchanged and non-negotiable: gains = green, losses =
+  red, always paired with a +/− sign. Blue accent must never appear in a way
+  that could be mistaken for a gain/loss value.
+- Secondary status colors (e.g. a "risk: high" or "health score" badge) use
+  their own palette (amber/red/green as appropriate to their own meaning) —
+  keep these visually distinct from the P&L green/red so a risk badge is
+  never confused with a gain/loss figure.
 
 ## Typography
-- One clean sans-serif system font stack (e.g. Inter, or the system UI font
-  stack) — no decorative or display fonts.
-- Numbers (prices, P&L, quantities) use a monospace or tabular-numeral
-  variant so figures align in columns — this matters a lot for a portfolio
-  table.
-- Clear hierarchy: page titles, section labels, and data should be visually
-  distinct by weight/size, not just color.
+- One clean sans-serif system font stack (e.g. Inter) — no decorative fonts.
+- Headline numbers (portfolio total value, big hero stats) are BOLD and
+  large — this is new: previously all numbers were similarly weighted, now
+  the single most important number on a page (e.g. total portfolio value)
+  should read as a clear visual anchor, noticeably bigger/bolder than
+  supporting numbers.
+- Numbers in tables (holdings rows, prices) stay tabular/monospace for
+  column alignment — bold headline treatment is for hero/summary numbers
+  only, not every number in a dense table.
+- Clear hierarchy: page titles, section labels, and data distinct by
+  weight/size, not just color.
 
 ## Layout & spacing
 - Generous whitespace over dense packing. Tables and cards should breathe.
-- Card-based sections for grouped info (a portfolio's summary, a holdings
-  table) with soft borders/shadows — not harsh dividing lines.
-- Rounded corners, subtle borders — matches the fintech-clean reference.
+- Card-based sections with soft borders + subtle elevation (see below) on
+  dark surfaces — cards should read as distinct panels floating slightly
+  above the page background.
+- Rounded corners throughout.
 
 ## Depth & elevation
-Default state is flat — depth is reserved for interaction feedback, not
-decoration.
-- Buttons: soft `shadow-sm` at rest. On hover, step up to `shadow-md` and
-  lift ~1px (`-translate-y-px`). On active/press, drop back to
-  `translate-y-0` and `shadow-sm` — reads as a physical press, not a bounce.
-  Disabled buttons don't lift or gain shadow on hover.
-- Icon buttons (edit/delete/close): transparent at rest — no shadow, no
-  background. Hover adds a rounded (full-circle) neutral background, the
-  same lift/shadow as buttons above, and a color shift toward the action's
-  intent (blue-ish for edit/neutral actions, red for delete). This red is a
-  destructive-action affordance, not a data value, so it doesn't conflict
-  with the green/red P&L rule below — it never sits next to or represents a
-  number.
-- Cards/containers (summary cards, table wrappers) keep their existing
-  static `shadow-sm`, unchanged — that elevation signals grouping, not
-  interactivity, so it never moves or intensifies.
-- Every shadow stays soft and low-opacity (Tailwind's default `shadow-sm`/
-  `shadow-md` scale, ~150ms transition). No glow, no colored shadows, no
-  gradients — this is additive polish on "flat and quiet," not a departure
-  from it.
+- Cards: soft shadow + a subtle 1px border (border does more work than
+  shadow on dark backgrounds, where shadows are less visible). Static, not
+  interactive — signals grouping.
+- Buttons: same physical-press pattern as before (soft shadow at rest, lift
+  + stronger shadow on hover, press back down on click, ~150ms transition).
+  Primary buttons use the blue accent as their fill.
+- GLOW is now allowed, scoped narrowly: the accent trend-line chart, small
+  accent badges (e.g. a percentage-change chip), and the "Tracker" half of
+  the brand wordmark (a permanent neon-blue text-shadow glow, not a hover
+  effect) may have a soft blue glow to feel "alive." Glow does NOT apply
+  to: data tables, holdings rows, P&L numbers, or any dense information
+  display — those stay flat and legible. Glow is a hero-moment effect, used
+  sparingly, never a default state for ordinary UI elements.
+- Icon buttons (edit/delete/close): unchanged from before — transparent at
+  rest, rounded neutral background + lift on hover, color shift toward
+  intent (red for delete stays a destructive-action convention, not a P&L
+  color).
+- All interactive elements must show `cursor: pointer` on hover — unchanged
+  hard requirement.
 
 ## Data display rules
 - Money values: always show currency, consistent decimal places, thousand
   separators (e.g. ฿12,450.00).
 - Gains/losses: color (green/red) AND a +/− sign — never color alone
-  (accessibility).
-- Empty states (no portfolios yet, no holdings yet) get a simple, calm
-  message + a clear next action — not a jarring blank page.
-- Composite numbers (a figure that's the sum of two or more parts — e.g.
-  Total Return = price gain + dividends) must show the parts as separate,
-  labeled columns/values alongside the total, not just the combined number.
-  Two green numbers with no label look identical and get misread as
-  duplicates. Apply this again for future composite figures (e.g. FX-adjusted
-  returns in Phase 3).
+  (accessibility). This rule is unaffected by the dark/blue direction change.
+- Empty states get a simple, calm message + a clear next action.
+- Composite numbers (e.g. Total Return = price gain + dividends) must show
+  the parts as separate, labeled values alongside the total — unchanged from
+  before, still applies.
+- Status/score badges (health, alignment, risk-level style indicators) are
+  fine as a pattern where useful, but should be clearly labeled (not just a
+  colored number with no context) and must not visually resemble the P&L
+  green/red convention.
+
+## Components
+- **Navigation**: the active nav link is a pill — translucent accent-blue
+  background (`bg-blue-500/10` light, `bg-blue-400/10` dark), rounded-full,
+  blue text, matching padding to inactive links so nothing shifts on
+  navigate. Inactive links are plain gray text with no background.
+  On the Overview page (`/`), the tabs (Holdings/Targets/Rebalancing/
+  Prices) are hidden entirely — no portfolio is selected there yet, so
+  pages that operate on a selected portfolio aren't meaningful from this
+  page. Only the "Portfolio Tracker" brand link shows, which doubles as
+  the way back to Overview from every other page — it gets a `cursor:
+  pointer` and a blue hover tint (`hover:text-blue-600`/`dark:hover:
+  text-blue-400`) everywhere, so it reads as clickable even without the
+  surrounding tabs. There's no separate "Overview" tab — the brand link
+  already goes there, and a second link to the same place would be
+  redundant. The wordmark itself is `text-lg` (bigger than the nav tabs)
+  with "Tracker" in accent blue and a permanent neon glow (text-shadow),
+  "Portfolio" in the normal heading color — see Depth & elevation.
+- **Modals & dialogs**: one reusable component for confirm/cancel prompts
+  (`ConfirmDialog`) — a dark card (matches the existing modal treatment:
+  `bg-white`/`dark:bg-gray-900`, 1px border, `shadow-lg`) over a
+  dark/blurred backdrop (`bg-black/40` light, `bg-black/60` dark, plus
+  `backdrop-blur-sm`). Confirm/Cancel buttons reuse the same button depth
+  system as the rest of the app (soft shadow, hover-lift, press-down).
+  Destructive confirms (delete) use a red confirm button — same
+  destructive-action convention as the delete icon, not a P&L color.
+  `window.confirm()`/`alert()` are not used anywhere; native browser
+  dialogs don't match the app's visual language.
+- **Badges/chips**: a rounded-full pill with a translucent tinted background
+  (e.g. `bg-green-500/10 text-green-600`) — first real use is the % return
+  badge on the Overview page's portfolio cards. Uses `pnlBadgeClass()`
+  (same green/red/gray semantics as `pnlColor()`, just with a background
+  tint added) so it's never a new color, just a new treatment of the
+  existing P&L palette. Same translucent-pill visual language as the nav
+  active state, applied to a different context.
+- **Portfolio Overview cards**: one row per portfolio, sitting directly on
+  the page background (no extra wrapping container) — icon in a translucent
+  blue circle + name + holdings count on the left, total value (bold,
+  tabular-nums) + return % badge + chevron on the right. Static
+  border/shadow at rest; hover adds the standard lift + a faint blue border
+  tint + `cursor: pointer` — the whole row is a `<Link>` to that portfolio's
+  Holdings page, so it needs to read as clickable without being a "button."
+- **Toasts / success notifications**: a small `Toast` component, fixed
+  top-right, dark card matching the modal treatment (`shadow-lg`, 1px
+  border), a green checkmark icon, auto-dismisses on its own (~3s) — for
+  transient success confirmations after a save/update/delete, not for
+  errors. Errors stay inline (in the form/page that produced them) so they
+  don't disappear before the user can read and act on them. Green here is a
+  universal success convention, not a P&L value, and appears in a distinct
+  floating corner position rather than inline next to a number — consistent
+  with the "Secondary status colors" rule above.
 
 ## Responsive
-- Must work on mobile — this is a portfolio you'll check on your phone.
-  Tables should scroll or reflow sensibly on narrow screens, not break layout.
+- Must work on mobile. Tables should scroll or reflow sensibly on narrow
+  screens, not break layout.
 
 ## What to avoid
-- No gradients, neon colors, or heavy shadows/glow — keep it flat and quiet.
-  (Subtle hover/active depth on interactive elements is fine — see Depth &
-  elevation.)
-- All interactive elements (buttons, icon buttons, links, clickable rows,
-  dropdowns) must show `cursor: pointer` on hover — hard requirement, not
-  optional polish. Native `<button>` elements don't get this by default in
-  most browsers, so it has to be added explicitly.
-- No dense "spreadsheet-style" tables with tiny text — this is Phase 1's
-  main view, it should feel premium, not like raw data dump.
-- No stock illustration/emoji clutter. Icon buttons (edit/delete etc.) are
-  small inline SVGs matching the accent/neutral palette, not emoji.
+- No neon colors outside the intentionally-scoped accent glow described
+  above (trend chart, accent badges, the "Tracker" wordmark). The glow is
+  deliberate and narrow — don't let it spread to table rows, general text,
+  or every card.
+- No dense "spreadsheet-style" tables with tiny text — should feel premium.
+- No stock illustration/emoji clutter. Icon buttons are small inline SVGs
+  matching the palette, not emoji.
+- Don't let bold headline typography bleed into dense data tables — tables
+  stay legible and evenly weighted; boldness is reserved for hero numbers.

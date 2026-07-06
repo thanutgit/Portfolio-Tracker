@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatMoney, formatPercent } from "@/lib/format";
 import { DIFF_WARNING_PCT } from "@/lib/constants";
+import { useConfirm } from "@/lib/hooks/useConfirm";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 interface AssetLite {
   id: string;
@@ -58,6 +60,12 @@ export default function PricesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const {
+    confirm,
+    confirmState,
+    handleConfirm: respondConfirm,
+    handleCancel: respondCancel,
+  } = useConfirm();
 
   useEffect(() => {
     (async () => {
@@ -165,8 +173,9 @@ export default function PricesPage() {
       const summary = suspicious
         .map((r) => `${r.rawSymbol}: ${formatPercent(r.diffPct as number)}`)
         .join(", ");
-      const confirmed = window.confirm(
-        `These moved more than ${DIFF_WARNING_PCT}% from the last known price — double-check for a typo or misplaced decimal:\n${summary}\n\nSave anyway?`
+      const confirmed = await confirm(
+        `These moved more than ${DIFF_WARNING_PCT}% from the last known price — double-check for a typo or misplaced decimal:\n${summary}\n\nSave anyway?`,
+        { title: "Unusual price change", confirmLabel: "Save anyway" }
       );
       if (!confirmed) return;
     }
@@ -345,6 +354,8 @@ export default function PricesPage() {
           </div>
         )}
       </main>
+
+      <ConfirmDialog state={confirmState} onConfirm={respondConfirm} onCancel={respondCancel} />
     </div>
   );
 }

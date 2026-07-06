@@ -48,3 +48,11 @@ export function pnlColor(value: number) {
   if (value < 0) return "text-red-600 dark:text-red-400";
   return "text-gray-500 dark:text-gray-400";
 }
+
+// Same green/red-is-P&L semantics as pnlColor, plus a translucent pill
+// background — for badge/chip contexts (DESIGN.md Components > Badges/chips).
+export function pnlBadgeClass(value: number) {
+  if (value > 0) return "bg-green-500/10 text-green-600 dark:bg-green-400/10 dark:text-green-400";
+  if (value < 0) return "bg-red-500/10 text-red-600 dark:bg-red-400/10 dark:text-red-400";
+  return "bg-gray-500/10 text-gray-600 dark:bg-gray-400/10 dark:text-gray-400";
+}

@@ -88,6 +88,9 @@ completely unaffected.
 ## D19 — Duplicate dividends are guarded by a UI confirm dialog, not a DB constraint
 Only warns, doesn't block — supplementary dividend payments on the same date
 are a real, valid case, and a uniqueness constraint would block them.
+**Superseded by D32**: the UI mechanism changed from `window.confirm()` to a
+custom `ConfirmDialog` component. The warn-don't-block philosophy here is
+unchanged — only how it's presented changed.
 
 ## D20 — CoinGecko with no API key, symbol→id mapping hardcoded in code
 Simplest option since only BTC is held right now. A crypto asset with no
@@ -145,3 +148,55 @@ number, so it doesn't conflict with DESIGN.md's green/red-is-P&L-only rule.
 Just `cursor-pointer` — the dropdown popup itself is rendered by the
 browser, so adding a lift effect would look inconsistent with native OS
 select behavior.
+
+## D32 — Replaced every `window.confirm()` with a custom `ConfirmDialog`, via a promise-based `useConfirm()` hook
+Native browser dialogs don't match the app's dark-card/depth-button visual
+language (DESIGN.md's Modals & dialogs section). A `useConfirm()` hook
+returning `await confirm(message, options)` let every existing call site
+swap in with minimal changes to the surrounding logic — no restructuring of
+the checks that run before/after each confirmation. Supersedes D19 (same
+warn-not-block behavior, different presentation).
+
+## D33 — "+ Dividend" changed from text to an icon button
+Consistency with the edit/delete icons already used in the same modal
+system.
+
+## D34 — Toasts are success-only; errors stay inline
+A toast auto-dismisses after ~3s, which risks the user not reading it in
+time — fine for a success confirmation, not for an error they need to act
+on. Errors stay inline (don't disappear on their own) instead. Top-right
+position and ~3s auto-dismiss were chosen as the common, expected pattern.
+
+## D35 — `cash_value` computed via a separate `assets` query, not by extending `holdings`/`holdings_with_returns`
+This lookup is only needed when saving a snapshot, not on every page load —
+cheaper to keep the existing views untouched and query separately.
+
+## D36 — Auto-snapshot doesn't run on the 60s silent crypto-refresh, only on initial load/portfolio switch
+Limits how often the database gets checked/written while still achieving
+the "once a day" goal in practice.
+
+## D37 — Auto-snapshot checks-then-inserts; the manual button always upserts (overwrites)
+Auto avoids unnecessary duplicate writes on repeat visits the same day. The
+manual button signals clear user intent to update with the latest
+intraday price.
+
+## D38 — Portfolio cards are full-width horizontal rows, not a grid of tiles
+Fits the left/right layout (icon + name on the left, value + badge on the
+right) as designed.
+
+## D39 — Same translucent blue wallet icon for every portfolio, no per-portfolio avatar colors
+Portfolios have no distinguishing data to color by, unlike an asset's
+symbol. Reuses the existing accent color from the nav pill/badge instead of
+introducing a new color system.
+
+## D40 — Overview card badge shows Total Return % (incl. dividends), not Unrealized P&L %
+The more complete at-a-glance summary figure for a quick overview.
+
+## D41 — No % badge on a portfolio with zero holdings
+Avoids showing a meaningless 0%/NaN — just the value and holdings count.
+
+## D42 — "Tracker" wordmark's neon glow stays in the existing blue accent family, not a new cyan/neon color
+Keeps the app's single-accent-color rule intact, even though this is the
+first glow outside the previously-defined chart/badge scope — widens that
+scope to include the wordmark. Done via layered `text-shadow`, not a
+`drop-shadow` filter, for better control over the glow radius on text.
