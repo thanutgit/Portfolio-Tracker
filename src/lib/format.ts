@@ -6,7 +6,7 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   JPY: "¥",
 };
 
-function symbolFor(currency: string) {
+export function symbolFor(currency: string) {
   return CURRENCY_SYMBOLS[currency] ?? `${currency} `;
 }
 

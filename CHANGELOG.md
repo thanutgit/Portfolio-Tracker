@@ -1006,3 +1006,87 @@
 - Verified live: legend now reads e.g. "SCBCHAE (Broad Market (China
   Equity))", "BTC (Cryptocurrency)" — confirmed against the real
   Retirement portfolio, read-only.
+
+## 2026-07-07 — Portfolio value trend chart (Phase 4 growth chart), from `portfolio_snapshots`
+- **New dependency: `recharts`** (v3, React 19-compatible peer range) —
+  the first charting library in the app. Explicitly asked-for/pre-approved
+  this round (unlike the earlier sector/country donuts, which stayed
+  hand-rolled SVG specifically to avoid a new dependency at the time — see
+  ARCHITECTURE.md, that choice wasn't revisited here).
+- New `src/components/TrendChart.tsx`, rendered on the Holdings page
+  between the summary cards and the sector/country donut row. Plots
+  `total_value` from `portfolio_snapshots` for the currently-selected
+  portfolio, ordered by date.
+  - **Fewer than 2 snapshot rows**: shows a plain, calm message ("Not
+    enough data yet for a trend chart...") instead of a chart — no flat
+    line or single floating dot, which would misleadingly look like real
+    (flat) history rather than "measurement just started."
+  - **2+ rows**: a real line chart. X axis: month + day (`Jul 5`, not the
+    raw ISO date) via a hand-parsed formatter (splits the `YYYY-MM-DD`
+    string directly rather than `new Date(...)`, sidestepping any
+    timezone-shift risk from parsing a date-only string). Y axis: currency
+    symbol + comma-separated thousands (e.g. `฿160,754`), via a newly
+    exported `symbolFor()` from `src/lib/format.ts` (previously a private
+    helper). Custom dark-card tooltip on hover (not the library's default
+    white tooltip) shows the exact date and full formatted money value.
+  - Line color and axis/grid colors are hardcoded hex values, not Tailwind
+    `dark:` classes — recharts renders its own internal SVG and doesn't
+    reliably pick up a wrapping element's `currentColor`, and the app's
+    dark mode is unconditional right now anyway (no reachable light-mode
+    toggle), so hardcoding for dark specifically is accurate to what's
+    actually shown.
+  - The line has a permanent soft blue glow — same layered technique as
+    the "Tracker" wordmark (two stacked `drop-shadow`s of increasing
+    radius/decreasing opacity), applied via a small CSS rule in
+    `globals.css` targeting recharts' own stable `.recharts-line-curve`
+    class name. DESIGN.md's Depth & elevation explicitly reserves this
+    kind of permanent glow for "the accent trend-line chart" — this is
+    that chart.
+- Wired into `holdings/page.tsx`: new `loadSnapshots(portfolioId)`,
+  filtered by `portfolio_id`, called (a) whenever the page loads or the
+  selected portfolio changes (same effect that already reloads holdings),
+  and (b) again immediately after any write to `portfolio_snapshots` —
+  both the silent auto-snapshot-on-load and the manual "Save today's
+  value" button — so a brand-new data point appears in the chart right
+  away, no page refresh needed.
+- Verified live against the real Retirement portfolio, carefully, since
+  it only had 1 real snapshot row today:
+  - Confirmed the insufficient-data message renders correctly with the
+    real single-row state (no chart, no error).
+  - Captured the app's own public Supabase URL/publishable key from
+    legitimate outgoing network requests (the same key the browser
+    already sends on every request — not the secret key, nothing read
+    from `.env.local`) to temporarily insert 7 historical rows and verify
+    the real chart path: confirmed the line renders with a visible glow,
+    X axis reads "Jun 29" through "Jul 6", Y axis reads "฿180,000" down to
+    "฿0", and hovering shows a tooltip with the exact date and value
+    (e.g. "Jul 2" / "฿155,200.00").
+  - **Deleted all 7 temporary rows immediately after**, confirmed only
+    the original real row remains and the insufficient-data message
+    correctly returns — zero lasting test data.
+  - Confirmed the chart's own width fits cleanly within a 375px mobile
+    viewport (309px wide, well inside the frame); the Holdings table's
+    separate, pre-existing horizontal scroll at that width is unrelated.
+  - Did **not** create a second real portfolio to test the "switching
+    portfolios updates the chart" requirement live, since portfolios
+    can't be deleted in this app and that would leave permanent test
+    data — verified instead by code review: `loadSnapshots` uses the
+    identical `selectedId`-keyed effect and `.eq("portfolio_id", ...)`
+    filter pattern already proven correct for holdings/asset-info
+    refresh on portfolio switch elsewhere in the same file.
+- ARCHITECTURE.md, DESIGN.md, and ROADMAP.md updated: `recharts` listed
+  under Tech stack, a new "Portfolio trend chart" section explaining the
+  data-refresh/no-chart-below-2-rows/hardcoded-color decisions, a
+  "Trend chart" entry under DESIGN.md Components, and Phase 4 marked
+  in progress with the growth chart done (benchmark/XIRR/drift-alerts
+  still open).
+- Design decisions to consider logging in DECISIONS.md (not yet saved):
+  (1) `recharts` added as the app's first charting library, scoped to
+  this one chart — the allocation donuts intentionally stay hand-rolled
+  SVG, not migrated; (2) below 2 snapshot rows, show a message instead of
+  any chart shape, rather than a flat/single-dot line; (3) chart colors
+  hardcoded for dark mode specifically, rather than theme-aware, since
+  recharts doesn't reliably inherit `currentColor` and dark is the only
+  reachable mode today; (4) the line's glow uses a CSS rule targeting
+  recharts' stable class name instead of an SVG `<filter>`, mirroring the
+  wordmark's own `drop-shadow`/`text-shadow` technique for consistency.

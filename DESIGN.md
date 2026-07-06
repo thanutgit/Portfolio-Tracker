@@ -148,6 +148,17 @@ glowing trend line), but still precise and trustworthy with real money.
   border/shadow at rest; hover adds the standard lift + a faint blue border
   tint + `cursor: pointer` — the whole row is a `<Link>` to that portfolio's
   Holdings page, so it needs to read as clickable without being a "button."
+- **Trend chart** (`TrendChart`, Holdings page): a line chart of portfolio
+  value over time, built with `recharts` — the accent-blue line (not the
+  library's default palette) gets the same permanent soft glow as the
+  "Tracker" wordmark (see Depth & elevation), on a calm dark card matching
+  every other card on the page. Axis labels are small and muted (not
+  competing with the line), gridlines are a faint dashed horizontal-only
+  line (no vertical clutter), and the hover tooltip is a custom dark card
+  (not the library's default white tooltip) showing the exact date and
+  money value. With fewer than 2 data points it shows a plain calm
+  sentence instead of a chart — never a flat or single-dot line, which
+  would misleadingly look like real (flat) history.
 - **Toasts / success notifications**: a small `Toast` component, fixed
   top-right, dark card matching the modal treatment (`shadow-lg`, 1px
   border), a green checkmark icon, auto-dismisses on its own (~3s) — for

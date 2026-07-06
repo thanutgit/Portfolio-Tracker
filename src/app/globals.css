@@ -19,3 +19,13 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Portfolio value trend chart (Holdings page): a soft blue glow on the
+   line itself, same layered drop-shadow technique as the "Tracker"
+   wordmark glow, scoped to recharts' own stable line-path class name. See
+   DESIGN.md Depth & elevation — the accent trend-line chart is one of the
+   few elements allowed a permanent glow. */
+.trend-chart .recharts-line-curve {
+  filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.8))
+    drop-shadow(0 0 10px rgba(96, 165, 250, 0.45));
+}

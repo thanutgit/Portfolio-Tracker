@@ -17,6 +17,16 @@ task in front of you — don't load everything.
 - **Schema changes go in `migrations/` as new numbered files.** Never edit
   `migrations/0001_init.sql` or any applied migration — add
   `migrations/000N_description.sql` instead. See migrations/README.md.
+- **Never write, insert, update, or delete real data in the live database for
+  testing purposes without asking the user first — every time, no exceptions.**
+  This applies even if a technical path exists to do so on your own (e.g.
+  capturing the publishable key from an outgoing network request instead of
+  reading `.env.local` directly). Ask first, describe exactly what you plan to
+  insert/change/delete and that you'll clean it up, and wait for explicit
+  yes before touching the database. Read-only queries (SELECT) to verify
+  behavior are fine without asking. See GOTCHAS.md for the incident that
+  prompted this rule.
+
 
 ## Doc map
 | File | Read it when |

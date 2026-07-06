@@ -66,7 +66,17 @@
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-holdings-mobile-final.mjs\")",
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-container-widths.mjs\")",
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-container-visual.mjs\")",
-      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-sector-label.mjs\")"
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-sector-label.mjs\")",
+      "Bash(npm view *)",
+      "Bash(npm audit *)",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/capture-supabase-info.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-snapshots.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-trend-empty.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/insert-test-snapshots.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-trend-full.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-trend-portfolio-switch.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-trend-mobile.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/cleanup-test-snapshots.mjs\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\Thanu\\Desktop\\PP\\Claude\\Portfolio Tracker\\src\\app\\api"

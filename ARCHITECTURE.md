@@ -9,6 +9,10 @@ transaction ledger.
 - Next.js (App Router) + TypeScript
 - Supabase (Postgres) — database + auth + auto-generated API
 - Tailwind CSS
+- `recharts` — the only charting library in the app, used for the
+  Holdings trend chart (`TrendChart`). The sector/country allocation
+  donuts are still hand-rolled SVG (`DonutChart`), not recharts — that
+  choice predates this dependency and wasn't revisited. See DECISIONS.md.
 - Deploy: Vercel now (no Docker needed). Future: Docker + k3s on a VPS with
   separate dev/prod. Keep the app deployment-agnostic — all config via env vars.
 
@@ -32,9 +36,9 @@ Tables:
 - `prices` — latest price per asset (source: manual/csv/api).
 - `targets` — desired allocation per asset (target_pct, drift_threshold),
   added in Phase 2. See ROADMAP.md and DECISIONS.md D14–D16.
-- `portfolio_snapshots` — daily total-value history per portfolio, for a
-  future growth chart. Added Phase 4 (snapshots slice only — no chart
-  yet). Columns: `id`, `portfolio_id`, `snapshot_date`, `total_value`,
+- `portfolio_snapshots` — daily total-value history per portfolio,
+  plotted by the Holdings page's trend chart (Phase 4). Columns: `id`,
+  `portfolio_id`, `snapshot_date`, `total_value`,
   `total_cost`, `cash_value`, `created_at`. `unique (portfolio_id,
   snapshot_date)` — at most one row per portfolio per day; writes are
   always an upsert on that pair, never a plain insert (see GOTCHAS.md #1).
@@ -92,6 +96,33 @@ button — no background job/cron yet. Only assets whose symbol has a known
 CoinGecko id are refreshed (see `COINGECKO_IDS` in the route); other
 `asset_type = 'crypto'` assets are reported as skipped, not silently ignored.
 Thai funds have no public price API and stay manual. See DECISIONS.md.
+
+## Portfolio trend chart
+`TrendChart` (`src/components/TrendChart.tsx`) plots `portfolio_snapshots`
+for the currently-selected portfolio only (`.eq("portfolio_id", ...)`),
+refetched whenever the Holdings page's `selectedId` changes (same effect
+that reloads holdings) and again right after any write to
+`portfolio_snapshots` (auto-snapshot or the "Save today's value" button),
+so the chart never needs a manual page refresh to catch up.
+
+Renders nothing chart-like with fewer than 2 snapshot rows — shows a
+plain message instead ("not enough data yet"). A single point (or zero)
+has no trend to show, and forcing a flat/one-dot line would misleadingly
+suggest a real (flat) history rather than "we just started measuring."
+No interpolation or synthetic backfill is done to work around sparse
+early data — the chart only ever plots real recorded rows, gaps between
+unevenly-spaced snapshot dates included.
+
+Colors are hardcoded hex values (not Tailwind `dark:` classes) for the
+line, axis ticks, and grid, since `recharts` renders its own SVG
+internals that don't reliably inherit a `currentColor` set via a
+wrapping element's class — see the component for the exact values, chosen
+to match the app's actual (currently dark-only, see Dark mode below)
+rendering rather than both themes. The line gets the same soft blue glow
+as the "Tracker" wordmark, via a CSS rule in `globals.css` targeting
+recharts' own stable `.recharts-line-curve` class name, rather than an
+SVG filter — DESIGN.md's Depth & elevation explicitly allows a permanent
+glow on "the accent trend-line chart."
 
 ## Transaction edit/delete safety check
 `wouldCauseNegativeHolding()` (`src/lib/transactions.ts`) is a pure function

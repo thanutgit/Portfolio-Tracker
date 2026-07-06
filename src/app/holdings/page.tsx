@@ -12,6 +12,7 @@ import { TransactionModal } from "@/components/TransactionModal";
 import { Toast } from "@/components/Toast";
 import { AllocationDonut } from "@/components/AllocationDonut";
 import type { DonutSegment } from "@/components/DonutChart";
+import { TrendChart, type SnapshotPoint } from "@/components/TrendChart";
 import { CHART_COLORS, UNCATEGORIZED_COLOR } from "@/lib/chartColors";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import type { HoldingWithReturns } from "@/lib/types";
@@ -132,6 +133,7 @@ function HoldingsPageContent() {
   } = usePortfolios();
   const [holdings, setHoldings] = useState<HoldingWithReturns[]>([]);
   const [assetInfo, setAssetInfo] = useState<Map<string, AssetInfo>>(new Map());
+  const [snapshots, setSnapshots] = useState<SnapshotPoint[]>([]);
   const [loadingHoldings, setLoadingHoldings] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [historyTarget, setHistoryTarget] = useState<HoldingWithReturns | null>(null);
@@ -176,9 +178,26 @@ function HoldingsPageContent() {
       if (!silent) {
         autoSnapshotIfMissing(selectedId, data ?? []);
         loadAssetInfo(data ?? []);
+        loadSnapshots(selectedId);
       }
     }
     if (!silent) setLoadingHoldings(false);
+  }
+
+  // Trend chart data — independent of the autoSnapshotIfMissing/
+  // handleSaveSnapshot writes below, so it always reflects whatever
+  // history already exists even before this load's own snapshot write (if
+  // any) finishes; those two call it again afterward to pick up a
+  // brand-new point immediately.
+  async function loadSnapshots(portfolioId: string) {
+    const { data, error } = await supabase
+      .from("portfolio_snapshots")
+      .select("snapshot_date, total_value")
+      .eq("portfolio_id", portfolioId)
+      .order("snapshot_date", { ascending: true });
+    if (!error) {
+      setSnapshots((data ?? []).map((s) => ({ ...s, total_value: Number(s.total_value) })));
+    }
   }
 
   // sector/country aren't on the `holdings`/`holdings_with_returns` views
@@ -242,6 +261,7 @@ function HoldingsPageContent() {
       await supabase
         .from("portfolio_snapshots")
         .upsert(payload, { onConflict: "portfolio_id,snapshot_date" });
+      await loadSnapshots(portfolioId);
     } catch {
       // quiet — same philosophy as crypto auto-refresh, just try again next load
     }
@@ -259,6 +279,7 @@ function HoldingsPageContent() {
       setError(error.message);
     } else {
       setToastMessage("Saved today's value.");
+      await loadSnapshots(selectedId);
     }
     setSavingSnapshot(false);
   }
@@ -431,6 +452,12 @@ function HoldingsPageContent() {
                 colorClass={loadingHoldings ? undefined : pnlColor(totalReturn)}
               />
             </div>
+
+            {!loadingHoldings && holdings.length > 0 && (
+              <div className="mt-6">
+                <TrendChart snapshots={snapshots} currency={baseCurrency} />
+              </div>
+            )}
 
             {!loadingHoldings && holdings.length > 0 && (
               <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
