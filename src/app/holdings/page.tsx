@@ -10,6 +10,9 @@ import { EmptyState } from "@/components/EmptyState";
 import { HistoryModal } from "@/components/HistoryModal";
 import { TransactionModal } from "@/components/TransactionModal";
 import { Toast } from "@/components/Toast";
+import { AllocationDonut } from "@/components/AllocationDonut";
+import type { DonutSegment } from "@/components/DonutChart";
+import { CHART_COLORS, UNCATEGORIZED_COLOR } from "@/lib/chartColors";
 import type { HoldingWithReturns } from "@/lib/types";
 import {
   formatDateTime,
@@ -22,6 +25,42 @@ import {
 
 interface RefreshCryptoResponse {
   updated: { symbol: string; price: number; as_of: string }[];
+}
+
+interface AssetInfo {
+  sector: string | null;
+  country: string | null;
+}
+
+const UNCATEGORIZED = "Uncategorized";
+
+function groupByDimension(
+  holdings: HoldingWithReturns[],
+  assetInfo: Map<string, AssetInfo>,
+  dimension: "sector" | "country"
+): DonutSegment[] {
+  const totals = new Map<string, number>();
+  for (const h of holdings) {
+    const info = assetInfo.get(h.asset_id);
+    const raw = info?.[dimension]?.trim();
+    const label = raw ? raw : UNCATEGORIZED;
+    const value = Number(h.market_value ?? 0);
+    totals.set(label, (totals.get(label) ?? 0) + value);
+  }
+
+  const sorted = Array.from(totals.entries())
+    .filter(([, value]) => value > 0)
+    .sort((a, b) => b[1] - a[1]);
+
+  let colorIndex = 0;
+  return sorted.map(([label, value]) => {
+    if (label === UNCATEGORIZED) {
+      return { label, value, color: UNCATEGORIZED_COLOR };
+    }
+    const color = CHART_COLORS[colorIndex % CHART_COLORS.length];
+    colorIndex += 1;
+    return { label, value, color };
+  });
 }
 
 function PencilIcon() {
@@ -60,6 +99,7 @@ function HoldingsPageContent() {
     error: portfoliosError,
   } = usePortfolios();
   const [holdings, setHoldings] = useState<HoldingWithReturns[]>([]);
+  const [assetInfo, setAssetInfo] = useState<Map<string, AssetInfo>>(new Map());
   const [loadingHoldings, setLoadingHoldings] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [historyTarget, setHistoryTarget] = useState<HoldingWithReturns | null>(null);
@@ -101,9 +141,29 @@ function HoldingsPageContent() {
       // Auto-snapshot only on non-silent loads (initial mount / portfolio
       // switch) — not on every 60s silent crypto-refresh reload. Quiet, like
       // crypto auto-refresh: no loading state, errors swallowed.
-      if (!silent) autoSnapshotIfMissing(selectedId, data ?? []);
+      if (!silent) {
+        autoSnapshotIfMissing(selectedId, data ?? []);
+        loadAssetInfo(data ?? []);
+      }
     }
     if (!silent) setLoadingHoldings(false);
+  }
+
+  // sector/country aren't on the `holdings`/`holdings_with_returns` views
+  // (D35 precedent: fetched separately, only when actually needed, rather
+  // than extending either view for this one chart). Skipped on silent
+  // (60s crypto-refresh) reloads — sector/country only change via an asset
+  // edit, not a price tick.
+  async function loadAssetInfo(holdingsData: HoldingWithReturns[]) {
+    const assetIds = holdingsData.map((h) => h.asset_id);
+    if (assetIds.length === 0) {
+      setAssetInfo(new Map());
+      return;
+    }
+    const { data } = await supabase.from("assets").select("id, sector, country").in("id", assetIds);
+    setAssetInfo(
+      new Map((data ?? []).map((a) => [a.id, { sector: a.sector, country: a.country }]))
+    );
   }
 
   // portfolio_snapshots = daily total_value/total_cost/cash_value per
@@ -254,6 +314,9 @@ function HoldingsPageContent() {
   const totalReturn = holdings.reduce((sum, h) => sum + Number(h.total_return ?? 0), 0);
   const totalReturnPct = totalCostBasis !== 0 ? (totalReturn / totalCostBasis) * 100 : null;
 
+  const bySector = groupByDimension(holdings, assetInfo, "sector");
+  const byCountry = groupByDimension(holdings, assetInfo, "country");
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
@@ -336,6 +399,13 @@ function HoldingsPageContent() {
                 colorClass={loadingHoldings ? undefined : pnlColor(totalReturn)}
               />
             </div>
+
+            {!loadingHoldings && holdings.length > 0 && (
+              <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <AllocationDonut title="By sector" segments={bySector} />
+                <AllocationDonut title="By country" segments={byCountry} />
+              </div>
+            )}
 
             <div className="mt-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
               {loadingHoldings ? (

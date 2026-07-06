@@ -12,9 +12,12 @@ _(covers original requirements: multiple portfolios + price tracking)_
 to buy/sell — in % AND in baht/units. Allocation pie: current vs target.
 _(original requirement #3)_
 
-## Phase 3 — accurate returns
-Dividends / total return, multi-currency + FX, CSV/paste price import,
-multi-dimension allocation (sector / country / currency).
+## Phase 3 — accurate returns (mostly done)
+Dividends / total return, CSV/paste price import, multi-dimension
+allocation (sector / country) — all done. Multi-currency + FX, and
+allocation by currency, deliberately not done yet: every asset is THB
+today, so there's nothing to convert or break out by currency until a
+non-THB holding exists.
 
 ## Phase 4 — history & benchmark
 `portfolio_snapshots`, growth chart, benchmark comparison (SET, S&P 500), XIRR,

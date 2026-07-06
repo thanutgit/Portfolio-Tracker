@@ -799,3 +799,93 @@
   is currently loaded in the UI, so pagination can never hide a real risk;
   (4) `wouldCauseNegativeHolding()` extracted to `src/lib/transactions.ts`
   as a pure, testable function rather than inlined in the modal.
+
+## 2026-07-06 — Multi-dimension allocation (sector/country), closes out Phase 3
+- New `/allocation` page (added to nav, between Rebalancing and Prices):
+  two donut charts — "By sector" and "By country" — each showing the
+  selected portfolio's holdings grouped by that dimension, sized by share
+  of total market value, with a legend (colored dot + label + %) beside
+  the chart on desktop, stacked below it on mobile.
+- Deliberately scoped to sector/country only, per the ask — **not**
+  building currency-based allocation this round, since every asset is
+  currently THB (nothing to break out yet). `ROADMAP.md` updated: Phase 3
+  marked mostly done, with the currency-allocation gap explicitly called
+  out as "not yet needed" rather than silently dropped.
+- **No new chart library** — `src/components/DonutChart.tsx` is a plain
+  SVG stroke-arc donut (each segment a `<circle>` sized by
+  `stroke-dasharray`/`stroke-dashoffset`, rotated to start at 12 o'clock).
+  Avoids both an unapproved new dependency (per ARCHITECTURE.md's "ask
+  before adding a dependency") and a chart library's default rainbow
+  palette, which the ask explicitly wanted to avoid.
+- New `src/lib/chartColors.ts`: a curated blue-led palette (`CHART_COLORS`,
+  8 mid-lightness cool hues — blue/sky/indigo/teal/violet/cyan) that stays
+  in the app's accent family per DESIGN.md, plus a separate neutral
+  `UNCATEGORIZED_COLOR` (gray) kept deliberately outside that palette so a
+  gap in the data reads as "missing," not as just another category.
+- **"Uncategorized" fallback**: any holding whose `sector`/`country` is
+  null or blank groups under "Uncategorized" instead of erroring or being
+  silently dropped from the chart.
+- Data: fetches the `holdings` view for the selected portfolio, then a
+  separate `assets` query for `sector`/`country` on just those asset ids
+  (same precedent as D35's `cash_value` lookup — those columns aren't on
+  `holdings`/`holdings_with_returns`, and extending either view just for
+  this one page isn't worth it).
+- No interactive filtering this round (clicking a slice doesn't filter the
+  Holdings table) — summary charts only, per the ask.
+- Verified live against the real Retirement portfolio (read-only —
+  no data was created or modified): both donuts render with correct,
+  distinct colors and legend percentages matching real sector/country
+  splits (e.g. 31.1% Broad Market (China Equity), 38.5% Global by
+  country), summing to 100% in each chart. Checked at a 375px mobile
+  width: the allocation cards and legends reflow correctly with no
+  overflow of their own. Noted a **pre-existing, unrelated** nav bar
+  overflow at 375px width (confirmed present on `/holdings` too, which
+  wasn't touched this round) — flagged to the user, not silently fixed,
+  since it's a separate nav-responsiveness gap outside this task's scope.
+- Design decisions to consider logging in DECISIONS.md (not yet saved):
+  (1) new standalone `/allocation` page rather than adding the charts to
+  the already-dense Holdings page, consistent with the app's existing
+  one-focused-page-per-concern pattern (Targets/Rebalancing/Prices/
+  Assets); (2) hand-rolled SVG donut chart instead of a charting library,
+  both to avoid an unapproved dependency and to get a fully custom color
+  palette; (3) a dedicated neutral color for "Uncategorized" kept outside
+  the regular category palette.
+
+## 2026-07-06 — Moved the allocation donuts from a standalone page into Holdings (reversing the earlier placement)
+- Removed the `/allocation` route entirely and its nav link — the two
+  donut charts ("By sector", "By country") now live directly on the
+  Holdings page, in a `grid-cols-1 lg:grid-cols-2` row between the summary
+  cards (Total market value / Unrealized P&L / Total return) and the
+  holdings table, matching the page's existing `gap-4` spacing rhythm.
+  Same reasoning both ways, just a different call this round: keeping
+  allocation next to the table it summarizes means seeing it needs no
+  extra navigation, and the two donut cards read as one more "summary
+  row" rather than a cramped addition, given they're compact and sit
+  below the existing 3-card summary grid rather than beside it.
+  `AllocationDonut`, `DonutChart`, and `chartColors.ts` were kept as-is —
+  only the page-level wiring moved; `groupByDimension()` (grouping +
+  "Uncategorized" fallback + palette assignment) now lives in
+  `holdings/page.tsx` instead of the deleted allocation page, since it
+  only has the one call site again.
+- Holdings' existing `loadHoldings()` now also calls a new
+  `loadAssetInfo()` to fetch `sector`/`country` for the current holdings'
+  asset ids (same separate-query pattern as D35's `cash_value` lookup) —
+  skipped on the 60s silent crypto-refresh reloads, since sector/country
+  only change via an asset edit, not a price tick, mirroring how
+  auto-snapshot is already silent-load-skipped for the same reason.
+  Donut row is only rendered once holdings have loaded and there's at
+  least one holding, so it never flashes an empty chart shell.
+- Verified live: confirmed `/allocation` now 404s and "Allocation" is gone
+  from the nav; confirmed the two donuts render correctly in their new
+  spot on `/holdings` with the same real Retirement-portfolio data as
+  before (sector/country percentages unchanged, still summing to 100%
+  each); checked the page at a 375px mobile width — the two donut cards
+  stack cleanly below the summary cards with no overflow of their own,
+  and the page isn't excessively long relative to before. Zero native
+  dialogs, zero console errors. No data was created or modified — this
+  was a pure UI relocation, read-only against the database.
+- Design decision to consider logging in DECISIONS.md (not yet saved):
+  reversing the earlier "own `/allocation` page" call in favor of
+  embedding directly in Holdings, since seeing allocation right next to
+  the table it summarizes was judged more useful than a dedicated page
+  for two compact charts.

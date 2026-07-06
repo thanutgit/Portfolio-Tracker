@@ -253,3 +253,7 @@ Prevents pagination from hiding a real risk that should be caught.
 
 ## D56 — `wouldCauseNegativeHolding()` extracted as a pure function in `src/lib/transactions.ts`
 Separates the check's logic from the modal — easier to test and reuse.
+
+## D57 — Allocation donut charts moved from a standalone `/allocation` page into the Holdings page (supersedes the earlier standalone-page choice)
+Seeing portfolio allocation sitting right next to the table it summarizes
+is more useful than a separate page for just two small charts.
