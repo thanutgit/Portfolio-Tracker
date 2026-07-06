@@ -419,34 +419,34 @@ function HoldingsPageContent() {
                 />
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1040px] text-sm">
+                  <table className="w-full min-w-[720px] text-sm">
                     <thead>
                       <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500 dark:border-gray-800 dark:text-gray-400">
-                        <th className="px-4 py-3 font-medium">Symbol</th>
-                        <th className="px-4 py-3 font-medium">Name</th>
-                        <th className="px-4 py-3 text-right font-medium">Qty</th>
-                        <th className="px-4 py-3 text-right font-medium">Avg Cost</th>
-                        <th className="px-4 py-3 text-right font-medium">Last Price</th>
-                        <th className="px-4 py-3 text-right font-medium">Market Value</th>
-                        <th className="px-4 py-3 text-right font-medium">
+                        <th className="px-3 py-3 font-medium">Symbol</th>
+                        <th className="px-3 py-3 font-medium">Name</th>
+                        <th className="px-3 py-3 text-right font-medium">Qty</th>
+                        <th className="px-3 py-3 text-right font-medium">Avg Cost</th>
+                        <th className="px-3 py-3 text-right font-medium">Last Price</th>
+                        <th className="px-3 py-3 text-right font-medium">Market Value</th>
+                        <th className="px-3 py-3 text-right font-medium">
                           Unrealized P&amp;L
                           <div className="text-[10px] font-normal normal-case text-gray-400 dark:text-gray-500">
                             price only
                           </div>
                         </th>
-                        <th className="px-4 py-3 text-right font-medium">
+                        <th className="px-3 py-3 text-right font-medium">
                           Dividends
                           <div className="text-[10px] font-normal normal-case text-gray-400 dark:text-gray-500">
                             net of tax
                           </div>
                         </th>
-                        <th className="px-4 py-3 text-right font-medium">
+                        <th className="px-3 py-3 text-right font-medium">
                           Total Return
                           <div className="text-[10px] font-normal normal-case text-gray-400 dark:text-gray-500">
                             P&amp;L + dividends
                           </div>
                         </th>
-                        <th className="px-4 py-3 text-right font-medium"></th>
+                        <th className="px-2 py-3 text-right font-medium"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -463,46 +463,48 @@ function HoldingsPageContent() {
                             key={h.asset_id}
                             className="hover:bg-gray-50 dark:hover:bg-gray-800/50"
                           >
-                            <td className="px-4 py-3 font-medium">{h.symbol}</td>
-                            <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
+                            <td className="px-3 py-3 text-xs font-medium">{h.symbol}</td>
+                            <td className="px-3 py-3 text-gray-500 dark:text-gray-400">
                               {h.name}
                             </td>
-                            <td className="px-4 py-3 text-right font-mono tabular-nums">
+                            <td className="whitespace-nowrap px-3 py-3 text-right font-mono text-xs tabular-nums">
                               {formatQuantity(Number(h.quantity))}
                             </td>
-                            <td className="px-4 py-3 text-right font-mono tabular-nums">
+                            <td className="whitespace-nowrap px-3 py-3 text-right font-mono text-xs tabular-nums">
                               {formatMoney(Number(h.avg_cost), h.currency)}
                             </td>
-                            <td className="px-4 py-3 text-right font-mono tabular-nums">
+                            <td className="whitespace-nowrap px-3 py-3 text-right font-mono text-xs tabular-nums">
                               {h.last_price === null
                                 ? "—"
                                 : formatMoney(Number(h.last_price), h.currency)}
                             </td>
-                            <td className="px-4 py-3 text-right font-mono tabular-nums">
+                            <td className="whitespace-nowrap px-3 py-3 text-right font-mono text-xs tabular-nums">
                               {h.market_value === null
                                 ? "—"
                                 : formatMoney(Number(h.market_value), h.currency)}
                             </td>
                             <td
-                              className={`px-4 py-3 text-right font-mono tabular-nums ${pnlColor(pnl)}`}
+                              className={`px-3 py-3 text-right font-mono text-xs tabular-nums ${pnlColor(pnl)}`}
                             >
-                              {formatSigned(pnl, h.currency)}
-                              <span className="ml-1 text-xs">
-                                {pct === null ? "" : `(${formatPercent(pct)})`}
-                              </span>
+                              <div className="whitespace-nowrap">{formatSigned(pnl, h.currency)}</div>
+                              {pct !== null && (
+                                <div className="text-[10px]">{`(${formatPercent(pct)})`}</div>
+                              )}
                             </td>
-                            <td className="px-4 py-3 text-right font-mono tabular-nums text-gray-700 dark:text-gray-300">
+                            <td className="whitespace-nowrap px-3 py-3 text-right font-mono text-xs tabular-nums text-gray-700 dark:text-gray-300">
                               {formatMoney(netDividends, h.currency)}
                             </td>
                             <td
-                              className={`px-4 py-3 text-right font-mono tabular-nums ${pnlColor(totalRet)}`}
+                              className={`px-3 py-3 text-right font-mono text-xs tabular-nums ${pnlColor(totalRet)}`}
                             >
-                              {formatSigned(totalRet, h.currency)}
-                              <span className="ml-1 text-xs">
-                                {totalRetPct === null ? "" : `(${formatPercent(totalRetPct)})`}
-                              </span>
+                              <div className="whitespace-nowrap">
+                                {formatSigned(totalRet, h.currency)}
+                              </div>
+                              {totalRetPct !== null && (
+                                <div className="text-[10px]">{`(${formatPercent(totalRetPct)})`}</div>
+                              )}
                             </td>
-                            <td className="px-4 py-3 text-right">
+                            <td className="px-2 py-3 text-right">
                               <button
                                 onClick={() => setHistoryTarget(h)}
                                 aria-label="View history"

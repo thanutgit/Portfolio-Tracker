@@ -24,7 +24,7 @@ export function NavBar() {
   const isOverview = pathname === "/";
 
   return (
-    <nav className="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+    <nav className="sticky top-0 z-40 border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
       <div className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3 text-sm sm:px-6 lg:px-8">
         <Link
           href="/"

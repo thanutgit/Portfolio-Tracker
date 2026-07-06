@@ -103,7 +103,12 @@ glowing trend line), but still precise and trustworthy with real money.
   already goes there, and a second link to the same place would be
   redundant. The wordmark itself is `text-lg` (bigger than the nav tabs)
   with "Tracker" in accent blue and a permanent neon glow (text-shadow),
-  "Portfolio" in the normal heading color — see Depth & elevation.
+  "Portfolio" in the normal heading color — see Depth & elevation. The
+  bar is `sticky top-0` with an opaque (not translucent) background, so
+  it stays visible and legible while a page's content scrolls underneath
+  it — `z-40`, below modal backdrops (`z-50`) and the confirm dialog
+  (`z-[60]`)/toast (`z-[70]`) that can appear above them, so an open
+  modal always correctly covers the nav rather than sitting behind it.
 - **Modals & dialogs**: one reusable component for confirm/cancel prompts
   (`ConfirmDialog`) — a dark card (matches the existing modal treatment:
   `bg-white`/`dark:bg-gray-900`, 1px border, `shadow-lg`) over a
@@ -141,6 +146,20 @@ glowing trend line), but still precise and trustworthy with real money.
 ## Responsive
 - Must work on mobile. Tables should scroll or reflow sensibly on narrow
   screens, not break layout.
+- Dense, many-column tables (e.g. Holdings) should fit the page's
+  existing container width on desktop/laptop screens without needing a
+  horizontal scroll — reserve that scroll for genuinely narrow (tablet/
+  mobile) viewports where it's unavoidable. In practice this means: no
+  hardcoded table `min-width` wider than the container can comfortably
+  fit; dense numeric/tabular-nums cells can drop to `text-xs` (still
+  legible, and consistent with "bold headline treatment is for hero
+  numbers only, not every number in a dense table"); a composite value +
+  its `%` render as two stacked lines rather than one long inline string,
+  so neither forces the column wider than the value alone needs; and any
+  text column whose content can occasionally run long (a fund name, an
+  unusually long symbol) should be allowed to wrap rather than forced
+  `whitespace-nowrap`, since wrapping is what actually keeps the table
+  within its container.
 
 ## What to avoid
 - No neon colors outside the intentionally-scoped accent glow described

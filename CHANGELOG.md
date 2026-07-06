@@ -889,3 +889,61 @@
   embedding directly in Holdings, since seeing allocation right next to
   the table it summarizes was judged more useful than a dedicated page
   for two compact charts.
+
+## 2026-07-06 — Holdings table no longer forces horizontal scroll on desktop; nav bar is now sticky
+- **Table width**: removed the table's old hardcoded `min-w-[1040px]`,
+  which forced a horizontal scrollbar on every screen size, including
+  wide desktop monitors, since it was wider than the page's own
+  `max-w-5xl` container. Root cause, found empirically (measuring each
+  column's actual rendered width): a few columns had genuinely wide
+  content — one symbol with a 16-character name (`PRINCIPAL VNEQ-A`) and
+  BTC's price in the millions (`฿2,996,421.21`) — that auto table layout
+  was sizing every row's column to accommodate.
+  - Dense numeric (`tabular-nums`) cells dropped from `text-sm` to
+    `text-xs` — still fully legible, and consistent with DESIGN.md's
+    existing rule that bold/large treatment is for hero numbers, not
+    every value in a dense table.
+  - Cell padding tightened from `px-4` to `px-3` (`px-2` on the icon-only
+    column).
+  - The `Unrealized P&L` / `Total Return` cells now render their `%` on
+    its own line below the money value, instead of inline
+    (`"+฿3,931.12 (+23.19%)"` on one unbreakable line) — this was the
+    single biggest lever, since it roughly halves the longest unbreakable
+    string in those two columns.
+  - `Symbol` no longer forces `whitespace-nowrap` — the one symbol with a
+    space in it can now wrap to two lines like `Name` already does,
+    rather than that single row dictating the whole column's width.
+  - `Name` was already unconstrained/wrapping; left as-is.
+  - Table's `min-width` reduced to `720px` — now just a floor for very
+    narrow contexts, not the thing forcing overflow.
+  - Verified empirically (measuring `scrollWidth` vs. `clientWidth` of
+    the table's wrapper via Playwright) at 1920/1440/1280/1024px: **zero
+    overflow** — no scrollbar. At 768px and 375px, the table still
+    exceeds the available width and scrolls, as expected/acceptable on
+    tablet/mobile per DESIGN.md.
+  - Confirmed the donut charts row and the table card share the exact
+    same left/right edges at a desktop width (both `240px`–`1200px` in a
+    1440px-wide test), so the page reads as aligned top to bottom.
+- **Sticky nav**: `NavBar` is now `sticky top-0 z-40` with its existing
+  opaque background kept as-is (no transparency was ever added, so no
+  change needed there) — stays pinned while the page scrolls underneath
+  it. `z-40` is deliberately below every overlay in the app (modal
+  backdrops `z-50`, `ConfirmDialog` `z-[60]`, `Toast` `z-[70]`), so an
+  open modal always correctly covers the nav instead of sitting behind
+  it. `sticky` (not `fixed`) was chosen specifically because it doesn't
+  remove the nav from document flow, so no page needed a compensating
+  top-padding change to avoid content jumping under it.
+  - Verified live: scrolled a tall Holdings page down ~770px, confirmed
+    the nav's `getBoundingClientRect().top` stayed at `0` throughout,
+    confirmed its computed background color is fully opaque, and
+    confirmed (via `elementFromPoint`) nothing renders through it —
+    table rows visibly scroll up and disappear cleanly under the bar in
+    the screenshot.
+- DESIGN.md updated: added a "dense table on desktop" note under
+  Responsive (the text-xs / tighter padding / stacked-%-line / allow-wrap
+  levers, so a future dense table gets built with these already in mind
+  instead of rediscovering them), and documented the sticky nav's
+  positioning/z-index/opacity rationale under the Navigation component
+  entry.
+- No data was created or modified this round — pure CSS/layout changes,
+  verified read-only against the real Retirement portfolio.

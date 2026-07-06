@@ -59,7 +59,11 @@
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-history-testxn1.mjs\")",
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-allocation.mjs\")",
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-nav-overflow.mjs\")",
-      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-holdings-allocation.mjs\")"
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-holdings-allocation.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-holdings-layout.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/diag-columns.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-sticky-nav.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-holdings-mobile-final.mjs\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\Thanu\\Desktop\\PP\\Claude\\Portfolio Tracker\\src\\app\\api"
