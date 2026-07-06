@@ -93,6 +93,29 @@ CoinGecko id are refreshed (see `COINGECKO_IDS` in the route); other
 `asset_type = 'crypto'` assets are reported as skipped, not silently ignored.
 Thai funds have no public price API and stay manual. See DECISIONS.md.
 
+## Transaction edit/delete safety check
+`wouldCauseNegativeHolding()` (`src/lib/transactions.ts`) is a pure function
+called from `HistoryModal` before an edit or delete of a buy/sell
+transaction is confirmed. It replays that asset's **entire** buy/sell
+history in chronological order (buys add, sells subtract), with the one
+transaction being edited swapped in with its new values, or removed
+entirely for a delete, and reports whether the running quantity would dip
+below zero at any point in that replayed timeline — not just at the
+edited/deleted row itself, since a later sell may depend on an earlier buy
+being large enough.
+
+Always fetched fresh in full at the moment of the edit/delete, never taken
+from whatever page the Transactions tab currently has loaded — the tab is
+paginated (see the Holdings page / GOTCHAS.md-adjacent history UI), so
+relying on the on-screen rows could miss an earlier transaction sitting on
+a page that hasn't been loaded, and silently fail to catch a real
+negative-holding risk. The check is deliberately a **warning, not a
+block**: same philosophy as the buy/sell form's oversell warning — the
+on-file ledger can legitimately be edited in an order that's momentarily
+inconsistent (e.g. fixing an old entry before its dependents), and the
+user should decide, not be locked out. See DECISIONS.md D55–D56 and
+GOTCHAS.md #1 for the incident this guards against.
+
 ## Conventions
 - Money math in decimal/`numeric`, never floating point.
 - Keep data fetching and secrets server-side where sensible.

@@ -728,3 +728,74 @@
   instead of a button that mysteriously does nothing; (3) extracted
   `isSymbolTaken()` as a shared helper now used by both `createAsset()`
   and the edit form's rename check.
+
+## 2026-07-06 — Unified "History" modal: view/edit/delete transactions, dividends moved into a tab
+- The Holdings table's per-row action button changed from a coin icon
+  (opened `DividendModal` directly) to a pencil icon (same style as
+  `/assets`, `aria-label="View history"`), opening a new **`HistoryModal`**
+  with two tabs: **Transactions** and **Dividends**.
+- **Dividends tab**: the previous `DividendModal` content (record form +
+  history list with edit/delete) moved here largely as-is — same behavior,
+  same duplicate-date and large-change warnings. `DividendModal.tsx` was
+  deleted outright once absorbed (confirmed zero other references via
+  grep).
+- **Transactions tab** (new): lists every buy/sell for the asset, newest
+  first, each row with a pencil (edit) + trash (delete) icon in the same
+  style as the dividend list.
+  - **Editing** a transaction opens the same fields as creation (type,
+    date, quantity, price, fee), pre-filled. Unlike dividends, **every**
+    edit always shows a preview/confirm dialog before saving — no
+    percentage threshold to skip it, since this is changing an existing
+    ledger entry that avg cost/holdings already depend on.
+  - **Deleting** a transaction always shows a confirm dialog stating the
+    row's own type/date/quantity/price before deleting.
+  - **New safety check for both**: before confirming an edit or delete,
+    replays the asset's full buy/sell timeline (fetched fresh, ignoring
+    whatever page is currently visible) with the change applied, and warns
+    — doesn't block — if held quantity would go negative at any point
+    afterward (e.g. shrinking an old buy below what a later sell already
+    assumed). New pure helper `wouldCauseNegativeHolding()` in
+    `src/lib/transactions.ts` does the replay; this is the same
+    warn-don't-block philosophy as the existing oversell warning, and
+    guards the exact class of mistake described in GOTCHAS.md #1.
+- **Pagination**: both tabs load only 10 rows initially (`.range()` +
+  `{ count: "exact" }`, not fetch-all-then-slice) with a "Load more (N
+  more)" button that fetches 10 more at a time — keeps a long history from
+  ever loading in full up front.
+- Verified live and thoroughly, given the risk level:
+  - Confirmed the pencil icon (not coin) opens History with Transactions
+    as the default tab, and Dividends still works (empty state correct
+    for an asset with none).
+  - Built a throwaway asset (`HISTTEST1`): buy 5 @ 2026-01-01, sell 3 @
+    2026-01-02 (net qty 2, stays visible in holdings). Tried editing the
+    buy's quantity down to 2 — confirmed the exact negative-holding
+    warning text appeared, cancelled without committing. Tried deleting
+    that same buy outright — confirmed the same warning plus the correct
+    row details (quantity/date), cancelled. Confirmed deleting the *sell*
+    instead triggers no such warning (removing a sell can only raise the
+    running total, never lower it).
+  - Added 9 more small buys to reach 11 total transactions, confirmed only
+    10 showed initially with "Load more (1 more)", clicked it, confirmed
+    all 11 then appeared and the button disappeared.
+  - Edited `TESTXN1`'s real buy transaction from qty 1 → 2 — confirmed the
+    preview text, confirmed the Holdings table quantity updated
+    immediately with no page reload, then edited it back to 1 to fully
+    restore its original state.
+  - **Cleaned up all throwaway data using the app's own new delete
+    features**: deleted all 11 `HISTTEST1` transactions (newest-first,
+    which never trips the negative-holding warning along the way), then
+    deleted the `HISTTEST1` asset itself via `/assets` (0 transactions
+    left) — zero residual test data left in the database this round.
+  - Confirmed zero native `window.confirm`/`alert` dialogs and zero
+    console errors throughout.
+- Design decisions to consider logging in DECISIONS.md (not yet saved):
+  (1) Transactions is the default tab (not Dividends), since viewing/
+  fixing transaction history is this modal's main new purpose; (2) both
+  tabs re-query with an increasing `.range()` limit on "Load more" rather
+  than incrementally appending pages, trading a little redundant refetch
+  for much simpler state — fine at this data scale; (3) the negative-
+  holding check always re-fetches the asset's full untrimmed transaction
+  list at the moment of edit/delete, rather than relying on whatever page
+  is currently loaded in the UI, so pagination can never hide a real risk;
+  (4) `wouldCauseNegativeHolding()` extracted to `src/lib/transactions.ts`
+  as a pure, testable function rather than inlined in the modal.

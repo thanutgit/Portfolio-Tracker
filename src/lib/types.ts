@@ -45,6 +45,16 @@ export interface DividendTransaction {
   fee: string;
 }
 
+// A single buy/sell transaction (transactions where type in ('buy','sell')).
+export interface AssetTransaction {
+  id: string;
+  type: "buy" | "sell";
+  trade_date: string;
+  quantity: string;
+  price: string;
+  fee: string;
+}
+
 export interface Asset {
   id: string;
   symbol: string;

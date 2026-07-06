@@ -241,3 +241,15 @@ that does nothing with no explanation.
 ## D52 — Extracted `isSymbolTaken()` as a shared helper in `src/lib/assets.ts`
 Used by both `createAsset()` and the edit form's rename check, so the
 duplicate-symbol lookup logic isn't duplicated between the two.
+
+## D53 — Transactions is the default tab in the History modal, not Dividends
+This modal's main new purpose is viewing/editing transaction history.
+
+## D54 — "Load more" re-queries with an expanding `.range()`, not per-page append
+Simpler state, and the cost difference is negligible at this data scale.
+
+## D55 — The negative-holding check always fetches the full transaction list, never relies on whatever page is currently paginated on screen
+Prevents pagination from hiding a real risk that should be caught.
+
+## D56 — `wouldCauseNegativeHolding()` extracted as a pure function in `src/lib/transactions.ts`
+Separates the check's logic from the modal — easier to test and reuse.

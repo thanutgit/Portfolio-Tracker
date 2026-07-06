@@ -7,7 +7,7 @@ import { usePortfolios } from "@/lib/hooks/usePortfolios";
 import { PortfolioPicker } from "@/components/PortfolioPicker";
 import { SummaryCard } from "@/components/SummaryCard";
 import { EmptyState } from "@/components/EmptyState";
-import { DividendModal } from "@/components/DividendModal";
+import { HistoryModal } from "@/components/HistoryModal";
 import { TransactionModal } from "@/components/TransactionModal";
 import { Toast } from "@/components/Toast";
 import type { HoldingWithReturns } from "@/lib/types";
@@ -24,7 +24,7 @@ interface RefreshCryptoResponse {
   updated: { symbol: string; price: number; as_of: string }[];
 }
 
-function CoinIcon() {
+function PencilIcon() {
   return (
     <svg
       viewBox="0 0 20 20"
@@ -33,10 +33,10 @@ function CoinIcon() {
       strokeWidth="1.5"
       className="h-4 w-4"
     >
-      <circle cx="10" cy="10" r="6.5" />
       <path
         strokeLinecap="round"
-        d="M10 6.75v6.5M12.25 8.25c0-.83-1.01-1.5-2.25-1.5s-2.25.67-2.25 1.5S8.76 9.75 10 9.75s2.25.67 2.25 1.5-1.01 1.5-2.25 1.5-2.25-.67-2.25-1.5"
+        strokeLinejoin="round"
+        d="M13.5 3.5l3 3L7 16l-4 1 1-4L13.5 3.5z"
       />
     </svg>
   );
@@ -62,7 +62,7 @@ function HoldingsPageContent() {
   const [holdings, setHoldings] = useState<HoldingWithReturns[]>([]);
   const [loadingHoldings, setLoadingHoldings] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dividendTarget, setDividendTarget] = useState<HoldingWithReturns | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<HoldingWithReturns | null>(null);
   const [cryptoLastUpdated, setCryptoLastUpdated] = useState<string | null>(null);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -434,11 +434,11 @@ function HoldingsPageContent() {
                             </td>
                             <td className="px-4 py-3 text-right">
                               <button
-                                onClick={() => setDividendTarget(h)}
-                                aria-label="Record dividend"
+                                onClick={() => setHistoryTarget(h)}
+                                aria-label="View history"
                                 className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-gray-400 transition-all duration-150 hover:-translate-y-px hover:bg-gray-100 hover:text-blue-600 hover:shadow-sm active:translate-y-0 active:shadow-none dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-blue-400"
                               >
-                                <CoinIcon />
+                                <PencilIcon />
                               </button>
                             </td>
                           </tr>
@@ -453,14 +453,14 @@ function HoldingsPageContent() {
         )}
       </main>
 
-      {dividendTarget && (
-        <DividendModal
-          portfolioId={dividendTarget.portfolio_id}
-          assetId={dividendTarget.asset_id}
-          symbol={dividendTarget.symbol}
-          name={dividendTarget.name}
-          currency={dividendTarget.currency}
-          onClose={() => setDividendTarget(null)}
+      {historyTarget && (
+        <HistoryModal
+          portfolioId={historyTarget.portfolio_id}
+          assetId={historyTarget.asset_id}
+          symbol={historyTarget.symbol}
+          name={historyTarget.name}
+          currency={historyTarget.currency}
+          onClose={() => setHistoryTarget(null)}
           onSaved={loadHoldings}
         />
       )}
