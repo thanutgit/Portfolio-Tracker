@@ -42,7 +42,7 @@ function ChevronRightIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth="1.5"
-      className="h-5 w-5 flex-shrink-0 text-gray-400 transition-colors duration-150 group-hover:text-blue-500 dark:text-gray-600 dark:group-hover:text-blue-400"
+      className="mt-1 h-5 w-5 flex-shrink-0 text-gray-400 transition-colors duration-150 group-hover:text-blue-500 dark:text-gray-600 dark:group-hover:text-blue-400"
     >
       <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 4.5l6 5.5-6 5.5" />
     </svg>
@@ -228,7 +228,7 @@ export default function OverviewPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-start gap-4">
                   <div className="text-right">
                     <p className="font-mono text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
                       {formatMoney(totalValue, portfolio.base_currency)}

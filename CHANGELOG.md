@@ -1220,3 +1220,14 @@
   targets → silent, all within threshold → silent, amber not red, reuse
   Rebalancing's formula) were explicit enough to leave no open judgment
   calls.
+
+## 2026-07-08 — Fix: Overview card chevron floated to the middle once the drift badge added a 3rd stacked line
+- The money/%/drift-badge column and its chevron sat in a
+  `flex items-center` row — fine when that column was 1-2 lines tall, but
+  once the drift badge added a 3rd line, center-alignment made the
+  chevron visually drift down next to the % badge instead of staying
+  next to the money value at top.
+- Fixed by changing that row to `items-start` and nudging the chevron
+  down `mt-1` to match the money line's baseline — verified both the
+  3-line case (money + % + drift badge) and the plain 1-line case (an
+  empty portfolio, no badges at all) still look correct.
