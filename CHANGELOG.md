@@ -1090,3 +1090,84 @@
   reachable mode today; (4) the line's glow uses a CSS rule targeting
   recharts' stable class name instead of an SVG `<filter>`, mirroring the
   wordmark's own `drop-shadow`/`text-shadow` technique for consistency.
+
+## 2026-07-07 — XIRR (money-weighted annualized return), Phase 4
+- New `src/lib/xirr.ts`: pure, dependency-free function solving for the
+  annualized rate that zeroes the NPV of a list of `{ date, amount }`
+  cash flows, via Newton-Raphson.
+  - **Fixed a real convergence bug found during validation**: plain
+    Newton-Raphson can overshoot past the mathematically valid `rate >
+    -1` boundary on a steep NPV curve — e.g. a straightforward "invest
+    100, worth 50 a year later" (-50%) case jumped to a first step of
+    -122% and immediately failed. Fixed with step-halving/damping (retry
+    with half the step, up to 50 times, before giving up) — a standard
+    safeguarded-Newton technique. Re-verified against 8 hand-computed
+    cases after the fix, including that exact -50% loss case.
+  - Validated against known-answer cases (in a scratchpad script, not a
+    committed test file — see the "no test framework yet" note below):
+    100 today → 110 in exactly 1 year = exactly 10%; a 2-year compounding
+    case (correctly off by a hair from a naive 10% due to 2024's leap
+    day actually being inside that span — matches real day-count XIRR
+    behavior, e.g. Excel's); a DCA case with two buys; a 0% case; a -50%
+    loss case; a near-total-loss case (-99.99%, still converges cleanly);
+    a deliberately weird oscillating-sign cash-flow case (converges to a
+    finite answer, no crash). Confirmed `null` (never `NaN`/`Infinity`)
+    for: a single cash flow, all flows on the same day, all flows the
+    same sign, and (see below) a too-short time span.
+  - **Found and fixed a second, real issue using the live Retirement
+    portfolio's actual data**: every one of its 8 buy transactions is
+    dated the same day (`2026-07-03`, the D6 "opening-balance" DCA
+    convention), and with today's terminal "current value" flow only 4
+    days later, the ~12% real gain annualized to **+3,145,865.30%** — a
+    technically-correct-but-useless number. Added a `minSpanDays` option
+    (default 30) to `xirr()`: below that span between the earliest and
+    latest cash flow, returns `null` (same "not enough data" path) rather
+    than an absurd annualized figure. This is a judgment call — the
+    default of 30 days is somewhat arbitrary, flagged for DECISIONS.md.
+- `holdings/page.tsx`: new `loadXirr(portfolioId, totalMarketValue)`
+  builds the cash-flow list from `transactions` (`buy`/`sell`/`dividend`
+  only — standalone `fee`/`deposit`/`withdraw`/`split` rows aren't
+  included, per the ask's literal scope) plus one final "as if sold
+  today" inflow of the current total market value, then calls `xirr()`.
+  Recomputed on the same non-silent-load schedule as auto-snapshot/
+  asset-info (portfolio load/switch — not every 60s silent crypto tick).
+- New 4th summary card, "Annualized Return (XIRR)", added to the existing
+  3-card row (now `sm:grid-cols-2 lg:grid-cols-4` instead of
+  `sm:grid-cols-3`). Shows the formatted percentage with the usual
+  green/red `pnlColor()` treatment when computable, or "Not enough data
+  yet" in neutral color (no green/red) when `xirr()` returns `null` —
+  covers both the "genuinely insufficient" and "too-short-span" null
+  cases identically, per the ask.
+- Verified live against the real Retirement portfolio (read-only —
+  no data written): confirmed the card renders "Not enough data yet" in
+  neutral color, correctly reflecting that portfolio's real 4-day-old
+  transaction history post-fix (was showing the absurd +3,145,865.30%
+  before the `minSpanDays` fix — caught by testing against real data,
+  not just synthetic cases). Did not additionally insert temporary
+  backdated transactions to also exercise the "real percentage renders
+  in green/red" path live, per the new CLAUDE.md rule requiring
+  permission before any test data touches the real database — that path
+  reuses `formatPercent()`/`pnlColor()`, both already proven correct
+  elsewhere on this exact page (visible working for Unrealized P&L/Total
+  Return), and `xirr()` itself is thoroughly unit-validated, so this was
+  judged sufficient without asking for another live-data round; happy to
+  do that extra check if wanted.
+- No test framework (vitest/jest) exists in this project yet, and
+  ARCHITECTURE.md says to ask before adding a dependency — validated via
+  an ad-hoc scratchpad script instead (consistent with how every other
+  piece of logic has been verified this session), not a committed test
+  suite. Flagged in case a real test framework is wanted going forward.
+- ARCHITECTURE.md updated: new "XIRR (money-weighted annualized return)"
+  section covering the cash-flow construction, the damping fix, and the
+  `minSpanDays` guard. ROADMAP.md: Phase 4's XIRR line marked done.
+- Design decisions to consider logging in DECISIONS.md (not yet saved):
+  (1) Newton-Raphson step-halving/damping so a steep NPV curve can't
+  overshoot the `rate > -1` domain and fail immediately — found via a
+  real failing case (-50% loss), not hypothetical; (2) a `minSpanDays`
+  floor (default 30 days) below which `xirr()` returns `null` instead of
+  a technically-valid-but-absurd annualized number — found via the real
+  Retirement portfolio's own data, not synthetic; (3) only
+  `buy`/`sell`/`dividend` transaction types feed the cash-flow list, per
+  the ask's literal scope — standalone `fee`/`deposit`/`withdraw`/`split`
+  rows are excluded; (4) no test framework added — validated with an
+  ad-hoc script instead, matching this session's established practice.

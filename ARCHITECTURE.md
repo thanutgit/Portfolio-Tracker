@@ -124,6 +124,29 @@ recharts' own stable `.recharts-line-curve` class name, rather than an
 SVG filter — DESIGN.md's Depth & elevation explicitly allows a permanent
 glow on "the accent trend-line chart."
 
+## XIRR (money-weighted annualized return)
+`xirr()` (`src/lib/xirr.ts`) is a pure, dependency-free function: given a
+list of `{ date, amount }` cash flows (negative = money out, positive =
+money in), it solves for the constant annual rate that makes their net
+present value zero, via damped Newton-Raphson (plain Newton-Raphson can
+overshoot past the `rate > -1` domain boundary on a steep NPV curve —
+e.g. near a large loss — so a step gets halved up to 50 times rather than
+immediately failing; see the file for the exact known-answer cases this
+was validated against). Returns `null` — never `NaN`/`Infinity` — when no
+meaningful rate exists, including when the whole cash-flow history spans
+fewer than `minSpanDays` (default 30) — see DECISIONS.md for why.
+
+The Holdings page (`loadXirr()`) builds the cash-flow list per portfolio
+from `transactions`: `buy` → `-(quantity*price + fee)`, `sell` →
+`+(quantity*price - fee)`, `dividend` → `+(quantity*price - tax - fee)`,
+each dated by `trade_date`, plus one final flow dated today for the
+portfolio's current total market value (as if fully liquidated today).
+Only `buy`/`sell`/`dividend` transaction types feed into it — `fee`
+(standalone)/`deposit`/`withdraw`/`split` rows, if any exist, currently
+do not. Recomputed on the same non-silent-load schedule as auto-snapshot
+and asset-info (portfolio switch / page load; not on every 60s silent
+crypto-price refresh).
+
 ## Transaction edit/delete safety check
 `wouldCauseNegativeHolding()` (`src/lib/transactions.ts`) is a pure function
 called from `HistoryModal` before an edit or delete of a buy/sell

@@ -15,6 +15,7 @@ import type { DonutSegment } from "@/components/DonutChart";
 import { TrendChart, type SnapshotPoint } from "@/components/TrendChart";
 import { CHART_COLORS, UNCATEGORIZED_COLOR } from "@/lib/chartColors";
 import { CONTAINER_CLASS } from "@/lib/layout";
+import { xirr, type CashFlow } from "@/lib/xirr";
 import type { HoldingWithReturns } from "@/lib/types";
 import {
   formatDateTime,
@@ -134,6 +135,8 @@ function HoldingsPageContent() {
   const [holdings, setHoldings] = useState<HoldingWithReturns[]>([]);
   const [assetInfo, setAssetInfo] = useState<Map<string, AssetInfo>>(new Map());
   const [snapshots, setSnapshots] = useState<SnapshotPoint[]>([]);
+  const [xirrRate, setXirrRate] = useState<number | null>(null);
+  const [loadingXirr, setLoadingXirr] = useState(false);
   const [loadingHoldings, setLoadingHoldings] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [historyTarget, setHistoryTarget] = useState<HoldingWithReturns | null>(null);
@@ -179,9 +182,50 @@ function HoldingsPageContent() {
         autoSnapshotIfMissing(selectedId, data ?? []);
         loadAssetInfo(data ?? []);
         loadSnapshots(selectedId);
+        const totalMV = (data ?? []).reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
+        loadXirr(selectedId, totalMV);
       }
     }
     if (!silent) setLoadingHoldings(false);
+  }
+
+  // Money-weighted annualized return (XIRR): every buy/sell/dividend for
+  // the whole portfolio becomes a cash flow (buy = money out, sell/
+  // dividend = money in), plus one final "as if sold today" inflow of the
+  // current total market value. Only recomputed on non-silent loads (same
+  // reasoning as auto-snapshot/asset-info: no need to redo this on every
+  // 60s crypto-price tick).
+  async function loadXirr(portfolioId: string, totalMarketValue: number) {
+    setLoadingXirr(true);
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("type, trade_date, quantity, price, fee, tax")
+      .eq("portfolio_id", portfolioId)
+      .in("type", ["buy", "sell", "dividend"]);
+    if (error || !data) {
+      setXirrRate(null);
+      setLoadingXirr(false);
+      return;
+    }
+
+    const flows: CashFlow[] = data.map((t) => {
+      const qty = Number(t.quantity);
+      const price = Number(t.price);
+      const fee = Number(t.fee);
+      let amount: number;
+      if (t.type === "buy") {
+        amount = -(qty * price + fee);
+      } else if (t.type === "sell") {
+        amount = qty * price - fee;
+      } else {
+        amount = qty * price - Number(t.tax) - fee; // dividend
+      }
+      return { date: t.trade_date, amount };
+    });
+    flows.push({ date: new Date().toISOString().slice(0, 10), amount: totalMarketValue });
+
+    setXirrRate(xirr(flows));
+    setLoadingXirr(false);
   }
 
   // Trend chart data — independent of the autoSnapshotIfMissing/
@@ -425,7 +469,7 @@ function HoldingsPageContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <SummaryCard
                 label="Total market value"
                 value={loadingHoldings ? "—" : formatMoney(totalMarketValue, baseCurrency)}
@@ -450,6 +494,21 @@ function HoldingsPageContent() {
                     : undefined
                 }
                 colorClass={loadingHoldings ? undefined : pnlColor(totalReturn)}
+              />
+              <SummaryCard
+                label="Annualized Return (XIRR)"
+                value={
+                  loadingHoldings || loadingXirr
+                    ? "—"
+                    : xirrRate === null
+                      ? "Not enough data yet"
+                      : formatPercent(xirrRate * 100)
+                }
+                colorClass={
+                  loadingHoldings || loadingXirr || xirrRate === null
+                    ? undefined
+                    : pnlColor(xirrRate)
+                }
               />
             </div>
 

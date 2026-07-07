@@ -20,9 +20,10 @@ today, so there's nothing to convert or break out by currency until a
 non-THB holding exists.
 
 ## Phase 4 — history & benchmark (in progress)
-`portfolio_snapshots` (done) and the growth/trend chart on Holdings (done,
-using `recharts`) — still to come: benchmark comparison (SET, S&P 500),
-XIRR, drift-threshold alerts.
+`portfolio_snapshots` (done), the growth/trend chart on Holdings (done,
+using `recharts`), and XIRR / money-weighted annualized return (done,
+`src/lib/xirr.ts`) — still to come: benchmark comparison (SET, S&P 500),
+drift-threshold alerts.
 
 ## Phase 5 — Thai tax & live prices
 RMF/SSF/ThaiESG holding-period tracking, dividend tax, price APIs.

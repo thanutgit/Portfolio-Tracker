@@ -257,3 +257,19 @@ Separates the check's logic from the modal — easier to test and reuse.
 ## D57 — Allocation donut charts moved from a standalone `/allocation` page into the Holdings page (supersedes the earlier standalone-page choice)
 Seeing portfolio allocation sitting right next to the table it summarizes
 is more useful than a separate page for just two small charts.
+
+## D58 — XIRR uses damped Newton-Raphson to prevent rate overshoot below -1
+Found a real bug testing a -50%-loss-in-1-year case: the first step
+jumped past the financially meaningful boundary. Fixed with standard
+step-halving.
+
+## D59 — XIRR's `minSpanDays` defaults to 30 days as the "too short to annualize" cutoff
+Found with real data: transactions all within 4 days annualized to
++3,145,865% — mathematically correct but useless. Below 30 days, show
+"not enough data" instead.
+
+## D60 — XIRR cash flows come only from buy/sell/dividend transactions, not fee/deposit/withdraw/split
+Matches the spec as literally given.
+
+## D61 — No test framework added for `xirr()`; verified with an ad-hoc script instead
+Consistent with how this session has verified everything else so far.

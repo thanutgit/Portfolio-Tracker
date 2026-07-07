@@ -72,3 +72,52 @@ write-limiting policies (not yet done — single-user dev setup, see
 DECISIONS.md D7/D10 area); until then, any client-side credential (even
 the "safe" publishable one) can write anything in the database, so the
 CLAUDE.md rule above is a process safeguard, not a technical one.
+
+## #3 — Newton-Raphson can overshoot past a financially meaningful rate boundary
+**What happened:** While writing the XIRR solver, the test case "-50%
+loss in 1 year" caused the first Newton-Raphson step to jump past
+`rate = -1` — a boundary with no financial meaning, since a rate below
+-100% doesn't correspond to any real investment outcome.
+
+**Fix:** Used step-halving/damping (safeguarded Newton-Raphson) instead
+of plain Newton-Raphson — if a step would cross the boundary, halve it
+and retry (up to a capped number of times) rather than accepting an
+invalid rate.
+
+**Prevention:** When writing a numerical solver with a meaningful domain
+constraint, test extreme cases (very large gains/losses), not just
+calm-looking middle-of-the-road ones — that's exactly where naive
+Newton-Raphson is most likely to overshoot.
+
+## #4 — XIRR gives a technically-correct but useless result if the transaction history is too short
+**What happened:** Testing against real data (the Retirement portfolio,
+whose transactions all fall within a 4-day span) produced an XIRR of
++3,145,865% — mathematically correct, but meaningless, because
+annualizing a return measured over a very short span massively distorts
+the number.
+
+**Fix:** Added a `minSpanDays` guard (default 30 days). Below that span
+between the earliest and latest cash flow, show "not enough data"
+instead of a number.
+
+**Prevention:** Any time-based metric (annualized return, XIRR, CAGR)
+needs an explicit "span too short to be meaningful" case built in from
+the start — don't just trust the formula. Test against real, existing
+data, not only synthetic cases, since that's what surfaced this one.
+
+## #5 — Saying "file updated" doesn't mean the real file actually changed
+**What happened:** Recurred multiple times this session — `migrations/
+README.md` missing its row for `0002`, `DECISIONS.md` missing D14–D16,
+`DESIGN.md` missing its "Depth & elevation" section, all despite each
+one having been reported as already updated. The usual cause is that an
+edit got overwritten by something else touching the same file on disk
+(e.g. the user's own unsaved/overwritten local state), not the AI
+fabricating the update — but from the outside, the two look identical.
+
+**Fix:** Open the actual file on disk and check it by eye every time
+"updated" is reported — especially for `DECISIONS.md`, `ARCHITECTURE.md`,
+`DESIGN.md`, none of which have a hook forcing them to stay in sync.
+
+**Prevention:** Before treating a summary of "file X was updated" as
+true, open that file at least once per significant round of work —
+don't just trust the description of what was done.
