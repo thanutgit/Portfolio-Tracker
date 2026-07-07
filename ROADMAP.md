@@ -33,3 +33,16 @@ RMF/SSF/ThaiESG holding-period tracking, dividend tax, price APIs.
 ## Phase 6 — LLM / wiki
 LLM-assisted analysis over the structured data.
 _(original requirement #4)_
+
+## Phase 7 — Auth & Row Level Security
+Turn on for real once you want to share the URL with someone else, or
+start worrying about data security — right now anyone with the URL +
+publishable key can read/write everything (see GOTCHAS.md #2).
+
+- Add login (Supabase Auth built-in — email/password or OAuth).
+- Enable the RLS policy `auth.uid() = portfolios.user_id` (the scaffold
+  is already noted in ARCHITECTURE.md).
+- Migrate existing data (current seed data, and anything added under
+  single-user dev) to a real `user_id`.
+- Decide: genuinely multi-user, or still single-user but gated behind a
+  login so randoms with the URL can't get in.
