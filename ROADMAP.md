@@ -21,9 +21,11 @@ non-THB holding exists.
 
 ## Phase 4 — history & benchmark (in progress)
 `portfolio_snapshots` (done), the growth/trend chart on Holdings (done,
-using `recharts`), and XIRR / money-weighted annualized return (done,
-`src/lib/xirr.ts`) — still to come: benchmark comparison (SET, S&P 500),
-drift-threshold alerts.
+using `recharts`), XIRR / money-weighted annualized return (done,
+`src/lib/xirr.ts`), and drift-threshold alerts (done, `src/lib/drift.ts`
+— quiet badges/banner on Overview and Holdings, reusing the Rebalancing
+page's own drift formula) — still to come: benchmark comparison (SET,
+S&P 500).
 
 ## Phase 5 — Thai tax & live prices
 RMF/SSF/ThaiESG holding-period tracking, dividend tax, price APIs.

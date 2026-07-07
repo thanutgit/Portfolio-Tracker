@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { usePortfolios } from "@/lib/hooks/usePortfolios";
@@ -16,6 +17,8 @@ import { TrendChart, type SnapshotPoint } from "@/components/TrendChart";
 import { CHART_COLORS, UNCATEGORIZED_COLOR } from "@/lib/chartColors";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { xirr, type CashFlow } from "@/lib/xirr";
+import { countDriftedAssets, type DriftHolding, type DriftTarget } from "@/lib/drift";
+import { WarningIcon } from "@/components/DriftBadge";
 import type { HoldingWithReturns } from "@/lib/types";
 import {
   formatDateTime,
@@ -137,6 +140,7 @@ function HoldingsPageContent() {
   const [snapshots, setSnapshots] = useState<SnapshotPoint[]>([]);
   const [xirrRate, setXirrRate] = useState<number | null>(null);
   const [loadingXirr, setLoadingXirr] = useState(false);
+  const [driftedCount, setDriftedCount] = useState<number | null>(null);
   const [loadingHoldings, setLoadingHoldings] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [historyTarget, setHistoryTarget] = useState<HoldingWithReturns | null>(null);
@@ -184,6 +188,7 @@ function HoldingsPageContent() {
         loadSnapshots(selectedId);
         const totalMV = (data ?? []).reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
         loadXirr(selectedId, totalMV);
+        loadDrift(selectedId, data ?? []);
       }
     }
     if (!silent) setLoadingHoldings(false);
@@ -226,6 +231,31 @@ function HoldingsPageContent() {
 
     setXirrRate(xirr(flows));
     setLoadingXirr(false);
+  }
+
+  // Drift-threshold alert: same formula as the Rebalancing page
+  // (src/lib/drift.ts), reused rather than reimplemented. `null` = no
+  // targets set for this portfolio at all (nothing to alert on); `0` =
+  // has targets, all within threshold (banner stays hidden either way).
+  async function loadDrift(portfolioId: string, holdingsData: HoldingWithReturns[]) {
+    const { data, error } = await supabase
+      .from("targets")
+      .select("asset_id, target_pct, drift_threshold")
+      .eq("portfolio_id", portfolioId);
+    if (error || !data) {
+      setDriftedCount(null);
+      return;
+    }
+    const driftHoldings: DriftHolding[] = holdingsData.map((h) => ({
+      asset_id: h.asset_id,
+      market_value: Number(h.market_value ?? 0),
+    }));
+    const driftTargets: DriftTarget[] = data.map((t) => ({
+      asset_id: t.asset_id,
+      target_pct: Number(t.target_pct),
+      drift_threshold: Number(t.drift_threshold),
+    }));
+    setDriftedCount(countDriftedAssets(driftHoldings, driftTargets));
   }
 
   // Trend chart data — independent of the autoSnapshotIfMissing/
@@ -445,6 +475,22 @@ function HoldingsPageContent() {
               selectedId={selectedId}
               onChange={setSelectedId}
             />
+
+            {!!driftedCount && (
+              <Link
+                href="/rebalancing"
+                className="mb-6 flex cursor-pointer items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-700 transition-all duration-150 hover:-translate-y-px hover:shadow-sm dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-400"
+              >
+                <WarningIcon className="h-4 w-4 flex-shrink-0" />
+                <span>
+                  {driftedCount} asset{driftedCount === 1 ? "" : "s"} drifted from their target
+                  allocation.
+                </span>
+                <span className="font-medium underline underline-offset-2">
+                  View Rebalancing →
+                </span>
+              </Link>
+            )}
 
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-gray-500 dark:text-gray-400">

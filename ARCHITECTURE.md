@@ -124,6 +124,25 @@ recharts' own stable `.recharts-line-curve` class name, rather than an
 SVG filter — DESIGN.md's Depth & elevation explicitly allows a permanent
 glow on "the accent trend-line chart."
 
+## Drift-threshold alerts
+`src/lib/drift.ts` extracts the drift formula the Rebalancing page has
+always used (`computeDrift()`: current % vs. target %, out-of-threshold
+when `|drift| > drift_threshold`, defaulting to 5% for a held asset with
+no target row at all) into a shared pure function, so Overview, Holdings,
+and Rebalancing all agree by construction rather than by convention.
+`countDriftedAssets()` wraps it for the alert UI: returns `null` when a
+portfolio has zero `targets` rows (nothing configured — not shown as an
+error or a false "all good"), otherwise the count of assets currently
+outside threshold (0 included).
+
+Both the Overview page's per-portfolio badge and the Holdings page's
+banner render nothing when the count is `0` or `null` — this is
+deliberately a quiet, always-visible-when-relevant indicator (no dismiss
+action, no toast that disappears on its own), per the explicit ask: never
+show a green/neutral "all within threshold" state by default, only speak
+up when something actually needs attention. Uses the amber/orange warning
+palette, never red — red is reserved for P&L losses (DESIGN.md).
+
 ## XIRR (money-weighted annualized return)
 `xirr()` (`src/lib/xirr.ts`) is a pure, dependency-free function: given a
 list of `{ date, amount }` cash flows (negative = money out, positive =

@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/EmptyState";
 import type { Holding } from "@/lib/types";
 import { formatMoney, formatPercent, formatQuantity } from "@/lib/format";
 import { CONTAINER_CLASS } from "@/lib/layout";
+import { computeDrift, type DriftHolding, type DriftTarget } from "@/lib/drift";
 
 interface TargetWithAsset {
   asset_id: string;
@@ -30,8 +31,6 @@ interface RebalanceRow {
   diffUnits: number | null;
   outOfThreshold: boolean;
 }
-
-const DEFAULT_DRIFT_THRESHOLD = 5;
 
 export default function RebalancingPage() {
   const {
@@ -76,6 +75,19 @@ export default function RebalancingPage() {
 
       const totalMV = holdings.reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
 
+      const driftHoldings: DriftHolding[] = holdings.map((h) => ({
+        asset_id: h.asset_id,
+        market_value: Number(h.market_value ?? 0),
+      }));
+      const driftTargets: DriftTarget[] = targets.map((t) => ({
+        asset_id: t.asset_id,
+        target_pct: Number(t.target_pct),
+        drift_threshold: Number(t.drift_threshold),
+      }));
+      const driftByAsset = new Map(
+        computeDrift(driftHoldings, driftTargets).map((d) => [d.asset_id, d])
+      );
+
       const holdingsMap = new Map(holdings.map((h) => [h.asset_id, h]));
       const targetsMap = new Map(targets.map((t) => [t.asset_id, t]));
       const assetIds = new Set([...holdingsMap.keys(), ...targetsMap.keys()]);
@@ -83,12 +95,9 @@ export default function RebalancingPage() {
       const merged: RebalanceRow[] = Array.from(assetIds).map((assetId) => {
         const h = holdingsMap.get(assetId);
         const t = targetsMap.get(assetId);
+        const d = driftByAsset.get(assetId)!;
         const marketValue = Number(h?.market_value ?? 0);
-        const currentPct = totalMV !== 0 ? (marketValue / totalMV) * 100 : 0;
-        const targetPct = t ? Number(t.target_pct) : 0;
-        const driftThreshold = t ? Number(t.drift_threshold) : DEFAULT_DRIFT_THRESHOLD;
-        const drift = currentPct - targetPct;
-        const targetValue = (targetPct / 100) * totalMV;
+        const targetValue = (d.targetPct / 100) * totalMV;
         const diffValue = targetValue - marketValue;
         const lastPrice = h?.last_price != null ? Number(h.last_price) : null;
         const diffUnits = lastPrice && lastPrice !== 0 ? diffValue / lastPrice : null;
@@ -98,14 +107,14 @@ export default function RebalancingPage() {
           symbol: h?.symbol ?? t?.assets?.symbol ?? "—",
           name: h?.name ?? t?.assets?.name ?? "—",
           currency: h?.currency ?? t?.assets?.currency ?? "THB",
-          currentPct,
-          targetPct,
-          driftThreshold,
-          drift,
+          currentPct: d.currentPct,
+          targetPct: d.targetPct,
+          driftThreshold: d.driftThreshold,
+          drift: d.drift,
           diffValue,
           lastPrice,
           diffUnits,
-          outOfThreshold: Math.abs(drift) > driftThreshold,
+          outOfThreshold: d.outOfThreshold,
         };
       });
 

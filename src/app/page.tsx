@@ -9,6 +9,8 @@ import { Toast } from "@/components/Toast";
 import type { HoldingWithReturns, Portfolio } from "@/lib/types";
 import { formatMoney, formatPercent, pnlBadgeClass } from "@/lib/format";
 import { CONTAINER_CLASS } from "@/lib/layout";
+import { countDriftedAssets, type DriftHolding, type DriftTarget } from "@/lib/drift";
+import { DriftBadge } from "@/components/DriftBadge";
 
 function WalletIcon() {
   return (
@@ -67,6 +69,7 @@ interface PortfolioSummary {
   totalValue: number;
   totalReturn: number;
   totalReturnPct: number | null;
+  driftedCount: number | null;
 }
 
 export default function OverviewPage() {
@@ -79,9 +82,10 @@ export default function OverviewPage() {
   async function loadSummaries() {
     setLoading(true);
     setError(null);
-    const [portfoliosRes, holdingsRes] = await Promise.all([
+    const [portfoliosRes, holdingsRes, targetsRes] = await Promise.all([
       supabase.from("portfolios").select("id, name, base_currency").order("name"),
       supabase.from("holdings_with_returns").select("*"),
+      supabase.from("targets").select("portfolio_id, asset_id, target_pct, drift_threshold"),
     ]);
     if (portfoliosRes.error) {
       setError(portfoliosRes.error.message);
@@ -93,6 +97,11 @@ export default function OverviewPage() {
       setLoading(false);
       return;
     }
+    if (targetsRes.error) {
+      setError(targetsRes.error.message);
+      setLoading(false);
+      return;
+    }
 
     const holdingsByPortfolio = new Map<string, HoldingWithReturns[]>();
     for (const h of (holdingsRes.data ?? []) as HoldingWithReturns[]) {
@@ -101,18 +110,44 @@ export default function OverviewPage() {
       holdingsByPortfolio.set(h.portfolio_id, list);
     }
 
+    interface TargetRow {
+      portfolio_id: string;
+      asset_id: string;
+      target_pct: string;
+      drift_threshold: string;
+    }
+    const targetsByPortfolio = new Map<string, DriftTarget[]>();
+    for (const t of (targetsRes.data ?? []) as TargetRow[]) {
+      const list = targetsByPortfolio.get(t.portfolio_id) ?? [];
+      list.push({
+        asset_id: t.asset_id,
+        target_pct: Number(t.target_pct),
+        drift_threshold: Number(t.drift_threshold),
+      });
+      targetsByPortfolio.set(t.portfolio_id, list);
+    }
+
     const result: PortfolioSummary[] = (portfoliosRes.data ?? []).map((portfolio) => {
       const holdings = holdingsByPortfolio.get(portfolio.id) ?? [];
       const totalValue = holdings.reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
       const totalCostBasis = holdings.reduce((sum, h) => sum + Number(h.cost_basis ?? 0), 0);
       const totalReturn = holdings.reduce((sum, h) => sum + Number(h.total_return ?? 0), 0);
       const totalReturnPct = totalCostBasis !== 0 ? (totalReturn / totalCostBasis) * 100 : null;
+      const driftHoldings: DriftHolding[] = holdings.map((h) => ({
+        asset_id: h.asset_id,
+        market_value: Number(h.market_value ?? 0),
+      }));
+      const driftedCount = countDriftedAssets(
+        driftHoldings,
+        targetsByPortfolio.get(portfolio.id) ?? []
+      );
       return {
         portfolio,
         holdingsCount: holdings.length,
         totalValue,
         totalReturn,
         totalReturnPct,
+        driftedCount,
       };
     });
 
@@ -165,7 +200,15 @@ export default function OverviewPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {summaries.map(({ portfolio, holdingsCount, totalValue, totalReturn, totalReturnPct }) => (
+            {summaries.map(
+              ({
+                portfolio,
+                holdingsCount,
+                totalValue,
+                totalReturn,
+                totalReturnPct,
+                driftedCount,
+              }) => (
               <Link
                 key={portfolio.id}
                 href={`/holdings?portfolio=${portfolio.id}`}
@@ -197,6 +240,9 @@ export default function OverviewPage() {
                         {formatPercent(totalReturnPct)}
                       </span>
                     )}
+                    <div>
+                      <DriftBadge count={driftedCount} />
+                    </div>
                   </div>
                   <ChevronRightIcon />
                 </div>

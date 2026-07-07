@@ -79,7 +79,10 @@
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/cleanup-test-snapshots.mjs\")",
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/xirr-validate.mjs\")",
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-xirr.mjs\")",
-      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/debug-xirr-transactions.mjs\")"
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/debug-xirr-transactions.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-targets.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-drift.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-drift2.mjs\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\Thanu\\Desktop\\PP\\Claude\\Portfolio Tracker\\src\\app\\api"

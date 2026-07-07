@@ -1171,3 +1171,52 @@
   the ask's literal scope — standalone `fee`/`deposit`/`withdraw`/`split`
   rows are excluded; (4) no test framework added — validated with an
   ad-hoc script instead, matching this session's established practice.
+
+## 2026-07-08 — Drift-threshold alerts (Phase 4)
+- New `src/lib/drift.ts`: extracted the Rebalancing page's existing drift
+  formula (current % vs. target %, out-of-threshold when
+  `|drift| > drift_threshold`, defaulting to 5% for a held asset with no
+  target row) into shared pure functions — `computeDrift()` (per-asset
+  detail) and `countDriftedAssets()` (returns `null` when a portfolio has
+  zero `targets` rows at all, otherwise the count currently out of
+  threshold, which may be `0`). No new formula was written — the ask was
+  explicit about reusing Rebalancing's exact logic, so `rebalancing/
+  page.tsx` was refactored to call `computeDrift()` too, rather than
+  keeping two copies of the same math that could quietly drift apart.
+- **Overview page**: each portfolio card now shows a small amber
+  `DriftBadge` ("N asset(s) off target") right after the existing green/
+  red return % badge, only when `countDriftedAssets()` is a positive
+  number. Silent (nothing rendered) when a portfolio has no targets
+  configured, or when every asset is within threshold — never a green/
+  neutral "all good" state shown by default.
+- **Holdings page**: a full-width amber banner (warning icon + "N
+  asset(s) drifted from their target allocation." + a "View Rebalancing
+  →" link to `/rebalancing`) appears above the summary cards, right below
+  the portfolio picker, under the same two conditions as the Overview
+  badge. Recomputed on portfolio switch/page load via a new `loadDrift()`
+  (same non-silent-load schedule as auto-snapshot/XIRR/asset-info).
+- New `src/components/DriftBadge.tsx`: exports both the compact
+  `DriftBadge` pill (Overview) and a shared `WarningIcon` (reused directly
+  in the Holdings banner, so both surfaces use the exact same icon).
+  Amber/orange throughout, never red — DESIGN.md is explicit that red
+  stays reserved for P&L losses, not general warning states. No dismiss
+  control, no auto-expiry: this is an ambient status indicator, not a
+  one-time event like `Toast`.
+- Verified live against the real Retirement portfolio (read-only — no
+  data written or modified): Rebalancing, Overview, and Holdings all
+  independently agreed on "1 asset(s) need rebalancing" / "1 asset off
+  target" / "1 asset drifted", confirming the shared formula behaves
+  identically everywhere it's used. Clicked the Holdings banner's link
+  and confirmed it navigates to `/rebalancing`. Switched to a second,
+  empty portfolio (0 holdings, 0 targets) and confirmed both the Overview
+  badge and Holdings banner render nothing at all for it — genuinely
+  silent, not just visually hidden.
+- ARCHITECTURE.md, DESIGN.md, ROADMAP.md updated: a new "Drift-threshold
+  alerts" architecture section, a Components entry describing the badge/
+  banner visual spec and the "renders nothing, not a collapsed state"
+  behavior, and Phase 4 marked done for this slice (only benchmark
+  comparison remains open in Phase 4).
+- No design decisions flagged this round — the ask's conditions (no
+  targets → silent, all within threshold → silent, amber not red, reuse
+  Rebalancing's formula) were explicit enough to leave no open judgment
+  calls.

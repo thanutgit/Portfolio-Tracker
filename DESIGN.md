@@ -30,7 +30,8 @@ glowing trend line), but still precise and trustworthy with real money.
 - Secondary status colors (e.g. a "risk: high" or "health score" badge) use
   their own palette (amber/red/green as appropriate to their own meaning) —
   keep these visually distinct from the P&L green/red so a risk badge is
-  never confused with a gain/loss figure.
+  never confused with a gain/loss figure. First real use: drift-threshold
+  alerts (amber/orange, deliberately not red — see Components).
 
 ## Typography
 - One clean sans-serif system font stack (e.g. Inter) — no decorative fonts.
@@ -148,6 +149,17 @@ glowing trend line), but still precise and trustworthy with real money.
   border/shadow at rest; hover adds the standard lift + a faint blue border
   tint + `cursor: pointer` — the whole row is a `<Link>` to that portfolio's
   Holdings page, so it needs to read as clickable without being a "button."
+- **Drift-threshold alerts**: amber/orange (`amber-500`/`amber-400`), never
+  red — red stays reserved for P&L losses. Two presentations of the same
+  underlying signal (`src/lib/drift.ts`): a compact translucent pill badge
+  (`DriftBadge`, same visual language as the P&L `pnlBadgeClass()` pills,
+  just amber) after the return % badge on Overview's portfolio cards, and
+  a full-width bordered banner (warning icon + count + a link to
+  Rebalancing) above the summary cards on Holdings. Both render nothing —
+  not a dismissed/collapsed state, literally absent from the DOM — when
+  there's nothing to flag: no targets configured, or every asset within
+  threshold. No dismiss control and no auto-expiry (unlike `Toast`):
+  this is an ambient, always-current status, not a one-time event.
 - **Trend chart** (`TrendChart`, Holdings page): a line chart of portfolio
   value over time, built with `recharts` — the accent-blue line (not the
   library's default palette) gets the same permanent soft glow as the
