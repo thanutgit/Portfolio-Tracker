@@ -208,7 +208,9 @@ export default function OverviewPage() {
                 totalReturn,
                 totalReturnPct,
                 driftedCount,
-              }) => (
+              }) => {
+                const showPercentBadge = holdingsCount > 0 && totalReturnPct !== null;
+                return (
               <Link
                 key={portfolio.id}
                 href={`/holdings?portfolio=${portfolio.id}`}
@@ -228,26 +230,30 @@ export default function OverviewPage() {
                   </div>
                 </div>
 
-                <div className="flex items-start gap-4">
-                  <div className="text-right">
-                    <p className="font-mono text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+                <div className="flex items-center gap-4">
+                  <div className="flex flex-col items-end gap-1.5">
+                    <p className="whitespace-nowrap font-mono text-xl font-medium tabular-nums text-gray-900 dark:text-gray-100">
                       {formatMoney(totalValue, portfolio.base_currency)}
                     </p>
-                    {holdingsCount > 0 && totalReturnPct !== null && (
-                      <span
-                        className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${pnlBadgeClass(totalReturn)}`}
-                      >
-                        {formatPercent(totalReturnPct)}
-                      </span>
+                    {(showPercentBadge || !!driftedCount) && (
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {showPercentBadge && (
+                          <span
+                            className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium tabular-nums ${pnlBadgeClass(totalReturn)}`}
+                          >
+                            {formatPercent(totalReturnPct as number)}
+                          </span>
+                        )}
+                        <DriftBadge count={driftedCount} />
+                      </div>
                     )}
-                    <div>
-                      <DriftBadge count={driftedCount} />
-                    </div>
                   </div>
                   <ChevronRightIcon />
                 </div>
               </Link>
-            ))}
+                );
+              }
+            )}
 
             <button
               onClick={() => setShowNewPortfolio(true)}

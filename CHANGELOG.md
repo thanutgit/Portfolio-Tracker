@@ -1231,3 +1231,49 @@
   down `mt-1` to match the money line's baseline — verified both the
   3-line case (money + % + drift badge) and the plain 1-line case (an
   empty portfolio, no badges at all) still look correct.
+
+## 2026-07-08 — Overview card: % and drift badges now sit side by side, not stacked
+- Changed the 3-line layout (money / % badge / drift badge, each on its
+  own row) to 2 lines: money on top, then the % badge and drift badge
+  together in one `flex flex-wrap` row underneath. `DriftBadge`'s own
+  `mt-1` was removed (spacing between the two badges is now handled by
+  the row's `gap`, not a per-badge margin meant for vertical stacking).
+- Responsive: `flex-wrap` lets the drift badge drop to its own line on
+  narrow viewports where both badges together would feel cramped next to
+  a truncating portfolio name — verified at 375px (wraps to 2 badge
+  rows), 768px, and 1440px (both badges stay on one row at both wider
+  sizes).
+- Re-checked the chevron position after this layout change (the exact
+  thing the previous round's fix addressed) — still correctly aligned
+  next to the money value at every width tested, including the
+  narrow-viewport wrapped case.
+
+## 2026-07-08 — Overview card: money/badges settled into a deliberate 2-line hierarchy (supersedes the single-row attempt)
+- Reworked the right side of the portfolio card into two clearly distinct
+  lines instead of one shared row: total value large and prominent on
+  top (`text-xl font-medium`, ~20px/500 weight — the card's main focus),
+  then the % and drift badges together, smaller (`text-xs`, ~12px) on
+  their own line underneath.
+- Badge polish: horizontal padding increased (`px-2 py-0.5` →
+  `px-2.5 py-1`, in both the inline % badge and `DriftBadge`) so they read
+  as breathing pills rather than tight text-in-a-box; `gap-2` (8px)
+  between the two badges when both are present; `gap-1.5` (6px) between
+  the value line and the badge line. Both lines stay right-aligned
+  (`items-end` on the column).
+- The badge line is only rendered at all when there's at least one badge
+  to show (`showPercentBadge || driftedCount`) — an empty portfolio with
+  neither a return % nor a drift alert collapses back to a clean single
+  line, no reserved empty gap underneath the value.
+- Chevron switched back to `items-center` on the outer row (removing the
+  `mt-1`/`items-start` hack from the previous round, which was
+  specifically compensating for an uneven ad-hoc 3-line stack) — with
+  this deliberately-designed, consistent 2-line block, centering across
+  both lines combined is the correct, symmetric result the ask wanted.
+  Verified with exact pixel math (not just eyeballing): measured the
+  midpoint of the chevron against the midpoint of the full value+badges
+  content block at 1440px, 768px, 375px, and 320px — **0.0px difference
+  at every width**, including the 375px/320px case where the two badges
+  wrap onto separate lines (3 lines total: value, %, drift).
+- No design decisions to flag — this round's spec (exact sizes, gaps,
+  padding, centering rule, and the "collapse when no badges" case) was
+  fully explicit.

@@ -26,7 +26,7 @@ interface Props {
 export function DriftBadge({ count }: Props) {
   if (!count) return null;
   return (
-    <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:bg-amber-400/10 dark:text-amber-400">
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:bg-amber-400/10 dark:text-amber-400">
       <WarningIcon />
       {count} asset{count === 1 ? "" : "s"} off target
     </span>
