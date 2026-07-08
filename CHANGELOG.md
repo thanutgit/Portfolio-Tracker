@@ -1562,3 +1562,30 @@
   ancestor; (4) still forwarding `?portfolio=` to Prices' NavBar link
   despite Prices not consuming it, for cross-page consistency.
   check — no data touched.
+
+## 2026-07-08 — Page headers enlarged; "Switch portfolio" becomes a pill button
+- New shared `PageHeader` component (`src/components/PageHeader.tsx`) —
+  title (`text-2xl` → `text-3xl`, still bold) and description (`text-sm`
+  → `text-base`, same muted color) both sized up one step. Replaces the
+  identical `<header><h1>...<p>...</p></header>` block that was
+  previously duplicated across all 7 pages (Overview, Holdings, Targets,
+  Rebalancing, Prices, Assets, Settings) — future header-style changes
+  now happen in one place.
+- `PortfolioLabel`'s "Switch portfolio" link (Holdings/Targets/
+  Rebalancing) restyled from a plain underlined text link to a small
+  pill button: rounded-full, soft shadow at rest, lift + stronger shadow
+  on hover, press back down on click — same depth system as every other
+  button in the app — plus a small swap-arrows icon, matching the
+  existing icon convention (20x20 viewBox, `currentColor` stroke,
+  `strokeWidth 1.75`, rounded caps, used by `WarningIcon` etc.).
+- Verified live with Playwright: confirmed all 7 pages' `<h1>` now
+  render at 30px/700 weight (up from the previous 24px); screenshotted
+  the Holdings page header and the "Switch portfolio" button at rest
+  and on hover to confirm the pill shape, icon, and lift/shadow read
+  correctly against the dark theme. Read-only, no data touched.
+- Design decisions worth logging in DECISIONS.md (not yet saved):
+  (1) extracting `PageHeader` as a new shared component now that the
+  exact same header markup existed in all 7 pages verbatim; (2) reusing
+  the app's existing secondary-button depth treatment (soft shadow,
+  hover-lift, press-down) for "Switch portfolio" rather than inventing a
+  new button style, just switched to `rounded-full` for the pill shape.

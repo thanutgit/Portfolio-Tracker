@@ -1,5 +1,14 @@
 import Link from "next/link";
 
+function SwitchIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-3.5 w-3.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 6.5h9m0 0-2.5-2.5M15 6.5 12.5 9" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14 13.5H5m0 0 2.5-2.5M5 13.5 7.5 16" />
+    </svg>
+  );
+}
+
 interface Props {
   name: string;
 }
@@ -15,8 +24,9 @@ export function PortfolioLabel({ name }: Props) {
       <span className="font-medium text-gray-900 dark:text-gray-100">{name}</span>
       <Link
         href="/"
-        className="cursor-pointer text-xs font-medium text-blue-600 underline underline-offset-2 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+        className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-gray-50 hover:shadow-md active:translate-y-0 active:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
       >
+        <SwitchIcon />
         Switch portfolio
       </Link>
     </div>

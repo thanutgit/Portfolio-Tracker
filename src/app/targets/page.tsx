@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { usePortfolios } from "@/lib/hooks/usePortfolios";
 import { PortfolioLabel } from "@/components/PortfolioLabel";
+import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { CONTAINER_CLASS } from "@/lib/layout";
 
@@ -127,13 +128,10 @@ function TargetsPageContent() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className={`${CONTAINER_CLASS} py-10`}>
-        <header className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight">Targets</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Set the target allocation (%) for each asset you currently hold. Used by the
-            Rebalancing page.
-          </p>
-        </header>
+        <PageHeader
+          title="Targets"
+          description="Set the target allocation (%) for each asset you currently hold. Used by the Rebalancing page."
+        />
 
         {(error || portfoliosError) && (
           <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">

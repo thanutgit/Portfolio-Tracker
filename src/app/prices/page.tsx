@@ -6,6 +6,7 @@ import { formatMoney, formatPercent } from "@/lib/format";
 import { DIFF_WARNING_PCT } from "@/lib/constants";
 import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { PageHeader } from "@/components/PageHeader";
 import { CONTAINER_CLASS } from "@/lib/layout";
 
 interface AssetLite {
@@ -207,14 +208,16 @@ export default function PricesPage() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className={`${CONTAINER_CLASS} py-10`}>
-        <header className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight">Prices</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Paste prices for assets without a price API (e.g. Thai funds) — one{" "}
-            <code>symbol,price</code> pair per line. Crypto has its own auto-refresh and
-            doesn&apos;t need this.
-          </p>
-        </header>
+        <PageHeader
+          title="Prices"
+          description={
+            <>
+              Paste prices for assets without a price API (e.g. Thai funds) — one{" "}
+              <code>symbol,price</code> pair per line. Crypto has its own auto-refresh and
+              doesn&apos;t need this.
+            </>
+          }
+        />
 
         {error && (
           <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">

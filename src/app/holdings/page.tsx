@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { usePortfolios } from "@/lib/hooks/usePortfolios";
 import { PortfolioLabel } from "@/components/PortfolioLabel";
+import { PageHeader } from "@/components/PageHeader";
 import { SummaryCard } from "@/components/SummaryCard";
 import { EmptyState } from "@/components/EmptyState";
 import { HistoryModal } from "@/components/HistoryModal";
@@ -452,13 +453,10 @@ function HoldingsPageContent() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className={`${CONTAINER_CLASS} py-10`}>
-        <header className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight">Holdings</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Holdings, unrealized P&amp;L, and total return (incl. dividends), computed live
-            from your transactions.
-          </p>
-        </header>
+        <PageHeader
+          title="Holdings"
+          description="Holdings, unrealized P&L, and total return (incl. dividends), computed live from your transactions."
+        />
 
         {(error || portfoliosError) && (
           <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">

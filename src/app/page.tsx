@@ -11,6 +11,7 @@ import { formatMoney, formatPercent, pnlBadgeClass } from "@/lib/format";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { countDriftedAssets, type DriftHolding, type DriftTarget } from "@/lib/drift";
 import { DriftBadge } from "@/components/DriftBadge";
+import { PageHeader } from "@/components/PageHeader";
 
 function WalletIcon() {
   return (
@@ -169,12 +170,10 @@ export default function OverviewPage() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className={`${CONTAINER_CLASS} py-10`}>
-        <header className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            All your portfolios at a glance — pick one to see its holdings.
-          </p>
-        </header>
+        <PageHeader
+          title="Overview"
+          description="All your portfolios at a glance — pick one to see its holdings."
+        />
 
         {error && (
           <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">

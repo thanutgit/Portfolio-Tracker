@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { usePortfolios } from "@/lib/hooks/usePortfolios";
 import { PortfolioLabel } from "@/components/PortfolioLabel";
+import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import type { Holding } from "@/lib/types";
 import { formatMoney, formatPercent, formatQuantity } from "@/lib/format";
@@ -143,12 +144,10 @@ function RebalancingPageContent() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className={`${CONTAINER_CLASS} py-10`}>
-        <header className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight">Rebalancing</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Current allocation vs. target, based on the holdings view and your saved targets.
-          </p>
-        </header>
+        <PageHeader
+          title="Rebalancing"
+          description="Current allocation vs. target, based on the holdings view and your saved targets."
+        />
 
         {(error || portfoliosError) && (
           <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">

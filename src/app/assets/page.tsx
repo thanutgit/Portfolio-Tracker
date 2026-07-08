@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { EditAssetModal } from "@/components/EditAssetModal";
 import { Toast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -117,13 +118,10 @@ export default function AssetsPage() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className={`${CONTAINER_CLASS} py-10`}>
-        <header className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight">Assets</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            The shared asset list used across all portfolios. New assets are added from the
-            transaction form on the Holdings page.
-          </p>
-        </header>
+        <PageHeader
+          title="Assets"
+          description="The shared asset list used across all portfolios. New assets are added from the transaction form on the Holdings page."
+        />
 
         {error && (
           <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">

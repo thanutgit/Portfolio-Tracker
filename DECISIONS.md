@@ -304,3 +304,15 @@ route.
 ## D67 — Prices' NavBar link still carries `?portfolio=` even though the page ignores it
 Keeps the URL consistent across pages; harmless since Prices already
 ignores this query param.
+
+## D68 — Extracted `PageHeader` as a new shared component
+The exact same `<header><h1>...<p>...</p></header>` markup existed
+verbatim in all 7 pages (Overview, Holdings, Targets, Rebalancing,
+Prices, Assets, Settings) — worth a shared component so future
+header-style changes happen in one place instead of 7.
+
+## D69 — "Switch portfolio" reuses the existing secondary-button depth treatment, just `rounded-full`
+Rather than inventing a new button style, it reuses the app's standard
+soft-shadow/hover-lift/press-down button pattern already used
+everywhere else, only changing the shape to a pill (`rounded-full`) to
+read as a compact, secondary action next to the portfolio name.
