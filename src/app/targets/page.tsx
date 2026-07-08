@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { usePortfolios } from "@/lib/hooks/usePortfolios";
-import { PortfolioPicker } from "@/components/PortfolioPicker";
+import { PortfolioLabel } from "@/components/PortfolioLabel";
 import { EmptyState } from "@/components/EmptyState";
 import { CONTAINER_CLASS } from "@/lib/layout";
 
@@ -22,10 +22,17 @@ interface TargetRecord {
 }
 
 export default function TargetsPage() {
+  return (
+    <Suspense fallback={null}>
+      <TargetsPageContent />
+    </Suspense>
+  );
+}
+
+function TargetsPageContent() {
   const {
     portfolios,
     selectedId,
-    setSelectedId,
     loading: loadingPortfolios,
     error: portfoliosError,
   } = usePortfolios();
@@ -140,11 +147,7 @@ export default function TargetsPage() {
           <EmptyState title="No portfolios yet" description="Create a portfolio to get started." />
         ) : (
           <>
-            <PortfolioPicker
-              portfolios={portfolios}
-              selectedId={selectedId}
-              onChange={setSelectedId}
-            />
+            <PortfolioLabel name={portfolios.find((p) => p.id === selectedId)?.name ?? ""} />
 
             {loading ? (
               <p className="text-sm text-gray-500 dark:text-gray-400">Loading holdings…</p>

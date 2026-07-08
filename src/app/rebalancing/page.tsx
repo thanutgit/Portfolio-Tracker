@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { usePortfolios } from "@/lib/hooks/usePortfolios";
-import { PortfolioPicker } from "@/components/PortfolioPicker";
+import { PortfolioLabel } from "@/components/PortfolioLabel";
 import { EmptyState } from "@/components/EmptyState";
 import type { Holding } from "@/lib/types";
 import { formatMoney, formatPercent, formatQuantity } from "@/lib/format";
@@ -33,10 +33,17 @@ interface RebalanceRow {
 }
 
 export default function RebalancingPage() {
+  return (
+    <Suspense fallback={null}>
+      <RebalancingPageContent />
+    </Suspense>
+  );
+}
+
+function RebalancingPageContent() {
   const {
     portfolios,
     selectedId,
-    setSelectedId,
     loading: loadingPortfolios,
     error: portfoliosError,
   } = usePortfolios();
@@ -155,11 +162,7 @@ export default function RebalancingPage() {
           <EmptyState title="No portfolios yet" description="Create a portfolio to get started." />
         ) : (
           <>
-            <PortfolioPicker
-              portfolios={portfolios}
-              selectedId={selectedId}
-              onChange={setSelectedId}
-            />
+            <PortfolioLabel name={selectedPortfolio?.name ?? ""} />
 
             {loading ? (
               <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>

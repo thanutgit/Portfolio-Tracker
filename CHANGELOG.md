@@ -1496,4 +1496,69 @@
 - Verified live: confirmed both "CURRENT VALUE" (table header) and
   "TOTAL CURRENT VALUE" (summary card) render correctly, and confirmed
   no leftover "MARKET VALUE" text remains anywhere on the page. Read-only
+
+## 2026-07-08 — Fixed: selected portfolio no longer resets when switching tabs
+- **Bug**: Holdings/Targets/Rebalancing each kept "which portfolio is
+  selected" as independent local state (inside `usePortfolios()`, driven
+  by a `<select>` dropdown). Switching tabs via the nav bar always
+  remounted the page fresh, silently resetting the selection back to
+  the first portfolio.
+- **Fix**: `usePortfolios()` (`src/lib/hooks/usePortfolios.ts`) rewritten
+  so the selected portfolio lives in the URL (`?portfolio=<id>`) instead
+  of local state — the URL is now the single source of truth, so it
+  survives navigation between tabs. `setSelectedId` no longer exists in
+  the hook's return value (there's no dropdown left to drive it).
+  - No `?portfolio=` in the URL at all, or one that doesn't match a real
+    portfolio (stale bookmark, typed URL): still falls back to the first
+    portfolio, exactly as before — the URL is then synced to match via
+    `router.replace()` (not `push`, so this doesn't add a back-button
+    history entry).
+- **Dropdown removed** from Holdings/Targets/Rebalancing, replaced with
+  a new `PortfolioLabel` component (`src/components/PortfolioLabel.tsx`)
+  — plain text showing the portfolio name plus a "Switch portfolio" link
+  back to Overview (`/`), since switching now only happens from there.
+  Deleted `PortfolioPicker.tsx` (fully unused once all 3 pages migrated).
+- **NavBar** (`src/components/NavBar.tsx`) now reads the current
+  `?portfolio=` value via `useSearchParams()` and appends it to the
+  Holdings/Targets/Rebalancing/Prices links specifically (not
+  Assets/Settings, which aren't portfolio-scoped) — so switching tabs
+  carries the id forward instead of just linking to the bare path.
+  Also fixed the two in-page links that pointed to another
+  portfolio-scoped page without the id: Holdings' drift-alert banner
+  ("View Rebalancing") and its unpriced-holdings banner ("Add prices").
+  Overview's own portfolio cards already linked with `?portfolio=`
+  correctly and needed no change.
+- **Prices is not actually portfolio-scoped** — it operates globally
+  over all assets/prices, with no `usePortfolios()` call and no
+  per-portfolio filtering anywhere in its logic, despite being named
+  as one of the 4 affected pages. Left its page logic untouched; its
+  NavBar link still carries `?portfolio=` forward for consistency (in
+  case the user detours through Prices and back), even though the page
+  itself ignores it.
+- Transitive Next.js constraint: since `usePortfolios()` now calls
+  `useSearchParams()` internally, every page using the hook needs a
+  `<Suspense>` boundary (a Next.js build-time requirement, not a real
+  runtime suspension) — added to Targets and Rebalancing (Holdings
+  already had one from an earlier round). NavBar itself now also calls
+  `useSearchParams()` and is rendered by the root layout for every
+  route, so `src/app/layout.tsx` now wraps `<NavBar />` in
+  `<Suspense fallback={null}>` as well.
+- Verified live with Playwright against the dev server (read-only
+  navigation, no data changes): landing on `/holdings` with no
+  `?portfolio=` correctly defaults to the first portfolio and syncs the
+  URL, without redirecting to `/`; clicking Targets → Rebalancing →
+  Prices → Holdings via the nav bar keeps the same portfolio id in the
+  URL at every step; clicking a different portfolio's card on Overview
+  and then clicking through the same tabs correctly carries *that*
+  portfolio's id instead; "Switch portfolio" correctly returns to `/`;
+  no `<select>` remains on any of the 3 pages.
+- Design decisions worth logging in DECISIONS.md (not yet saved):
+  (1) removing `setSelectedId` entirely from `usePortfolios()`'s public
+  API now that there's no dropdown to drive it; (2) using
+  `router.replace()` rather than `push()` for the URL auto-correction,
+  to avoid polluting browser history; (3) wrapping `<NavBar />` in
+  `<Suspense>` at the root-layout level, since that's the only place
+  it can be done given NavBar is rendered by every route's shared
+  ancestor; (4) still forwarding `?portfolio=` to Prices' NavBar link
+  despite Prices not consuming it, for cross-page consistency.
   check — no data touched.

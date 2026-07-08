@@ -288,3 +288,19 @@ basis is always known; market value isn't, without a price). That
 inconsistency is more confusing than just disclosing directly, via a
 banner, that some assets don't have a price yet and the totals may be
 incomplete.
+
+## D64 — `setSelectedId` removed entirely from `usePortfolios()`
+There's no dropdown left to drive this state — the selected portfolio
+now comes from the URL only.
+
+## D65 — URL auto-correction uses `router.replace()`, not `push()`
+Prevents the browser's back button from filling up with automatic
+URL-correction history that the user never actually navigated to.
+
+## D66 — `<NavBar>` wrapped in `<Suspense>` at the root layout
+The only place this can be done, since NavBar is shared across every
+route.
+
+## D67 — Prices' NavBar link still carries `?portfolio=` even though the page ignores it
+Keeps the URL consistent across pages; harmless since Prices already
+ignores this query param.

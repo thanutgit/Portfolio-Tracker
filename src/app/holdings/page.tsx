@@ -2,10 +2,9 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { usePortfolios } from "@/lib/hooks/usePortfolios";
-import { PortfolioPicker } from "@/components/PortfolioPicker";
+import { PortfolioLabel } from "@/components/PortfolioLabel";
 import { SummaryCard } from "@/components/SummaryCard";
 import { EmptyState } from "@/components/EmptyState";
 import { HistoryModal } from "@/components/HistoryModal";
@@ -143,11 +142,9 @@ export default function HoldingsPage() {
 }
 
 function HoldingsPageContent() {
-  const searchParams = useSearchParams();
   const {
     portfolios,
     selectedId,
-    setSelectedId,
     loading: loadingPortfolios,
     error: portfoliosError,
   } = usePortfolios();
@@ -164,19 +161,6 @@ function HoldingsPageContent() {
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
-
-  // Honors an incoming ?portfolio=<id> (e.g. from the Overview page's
-  // portfolio cards) as the initial selection, without changing the
-  // dropdown itself — once loaded, switching portfolios still works exactly
-  // as before via usePortfolios()'s own selectedId/setSelectedId.
-  const requestedPortfolioId = searchParams.get("portfolio");
-  useEffect(() => {
-    if (!requestedPortfolioId) return;
-    if (portfolios.some((p) => p.id === requestedPortfolioId)) {
-      setSelectedId(requestedPortfolioId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestedPortfolioId, portfolios]);
 
   async function loadHoldings(signal?: { cancelled: boolean }, silent = false) {
     if (!selectedId) return;
@@ -491,15 +475,11 @@ function HoldingsPageContent() {
           />
         ) : (
           <>
-            <PortfolioPicker
-              portfolios={portfolios}
-              selectedId={selectedId}
-              onChange={setSelectedId}
-            />
+            <PortfolioLabel name={selectedPortfolio?.name ?? ""} />
 
             {!!driftedCount && (
               <Link
-                href="/rebalancing"
+                href={`/rebalancing?portfolio=${selectedId}`}
                 className="mb-6 flex cursor-pointer items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-700 transition-all duration-150 hover:-translate-y-px hover:shadow-sm dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-400"
               >
                 <WarningIcon className="h-4 w-4 flex-shrink-0" />
@@ -543,7 +523,7 @@ function HoldingsPageContent() {
                   {`${unpricedCount} asset${unpricedCount === 1 ? "" : "s"} ${unpricedCount === 1 ? "doesn't" : "don't"} have a price yet — the totals below don't include ${unpricedCount === 1 ? "its" : "their"} value.`}
                 </span>
                 <Link
-                  href="/prices"
+                  href={`/prices?portfolio=${selectedId}`}
                   className="ml-auto flex-shrink-0 font-medium underline underline-offset-2 hover:text-gray-900 dark:hover:text-gray-200"
                 >
                   Add prices →

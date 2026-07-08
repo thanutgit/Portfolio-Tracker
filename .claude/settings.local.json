@@ -101,7 +101,12 @@
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-tooltip-clip.mjs\")",
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-and-fix-bbharata.mjs\")",
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/shot-tooltip-fixed.mjs\")",
-      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-rename.mjs\")"
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-rename.mjs\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(break)",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-portfolio-url.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-portfolio-switch.mjs\")",
+      "Bash(taskkill //PID 41048 //F)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Thanu\\Desktop\\PP\\Claude\\Portfolio Tracker\\src\\app\\api"

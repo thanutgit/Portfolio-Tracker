@@ -1,16 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { CONTAINER_CLASS } from "@/lib/layout";
 
 const LINKS = [
-  { href: "/holdings", label: "Holdings" },
-  { href: "/targets", label: "Targets" },
-  { href: "/rebalancing", label: "Rebalancing" },
-  { href: "/prices", label: "Prices" },
-  { href: "/assets", label: "Assets" },
-  { href: "/settings", label: "Settings" },
+  { href: "/holdings", label: "Holdings", portfolioScoped: true },
+  { href: "/targets", label: "Targets", portfolioScoped: true },
+  { href: "/rebalancing", label: "Rebalancing", portfolioScoped: true },
+  { href: "/prices", label: "Prices", portfolioScoped: true },
+  { href: "/assets", label: "Assets", portfolioScoped: false },
+  { href: "/settings", label: "Settings", portfolioScoped: false },
 ];
 
 const INACTIVE_CLASS =
@@ -20,10 +20,12 @@ const ACTIVE_CLASS =
 
 export function NavBar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   // Overview ("/") has no portfolio selected yet, so the other tabs (which
   // all operate on a selected portfolio) don't mean anything there — just
   // the brand alone, no tabs beside it.
   const isOverview = pathname === "/";
+  const portfolioId = searchParams.get("portfolio");
 
   return (
     <nav className="sticky top-0 z-40 border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
@@ -38,15 +40,21 @@ export function NavBar() {
           </span>
         </Link>
         {!isOverview &&
-          LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={pathname === link.href ? ACTIVE_CLASS : INACTIVE_CLASS}
-            >
-              {link.label}
-            </Link>
-          ))}
+          LINKS.map((link) => {
+            const href =
+              link.portfolioScoped && portfolioId
+                ? `${link.href}?portfolio=${portfolioId}`
+                : link.href;
+            return (
+              <Link
+                key={link.href}
+                href={href}
+                className={pathname === link.href ? ACTIVE_CLASS : INACTIVE_CLASS}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
       </div>
     </nav>
   );
