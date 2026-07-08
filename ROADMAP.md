@@ -27,8 +27,11 @@ using `recharts`), XIRR / money-weighted annualized return (done,
 page's own drift formula) — still to come: benchmark comparison (SET,
 S&P 500).
 
-## Phase 5 — Thai tax & live prices
-RMF/SSF/ThaiESG holding-period tracking, dividend tax, price APIs.
+## Phase 5 — Thai tax & live prices (in progress)
+RMF/SSF/ThaiESG holding-period tracking (done — `src/lib/taxHolding.ts`,
+`user_settings` table for birth date, badges in the History modal) —
+still to come: live price APIs for Thai funds/stocks (dividend tax
+withholding was already handled earlier, in Phase 3).
 
 ## Phase 6 — LLM / wiki
 LLM-assisted analysis over the structured data.

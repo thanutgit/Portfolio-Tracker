@@ -118,6 +118,22 @@ function PencilIcon() {
   );
 }
 
+function InfoIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className="h-4 w-4 flex-shrink-0"
+    >
+      <circle cx="10" cy="10" r="7" />
+      <path strokeLinecap="round" d="M10 9v4.5" />
+      <circle cx="10" cy="6.5" r="0.75" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export default function HoldingsPage() {
   return (
     <Suspense fallback={null}>
@@ -440,6 +456,11 @@ function HoldingsPageContent() {
   const totalPnlPct = totalCostBasis !== 0 ? (totalPnl / totalCostBasis) * 100 : null;
   const totalReturn = holdings.reduce((sum, h) => sum + Number(h.total_return ?? 0), 0);
   const totalReturnPct = totalCostBasis !== 0 ? (totalReturn / totalCostBasis) * 100 : null;
+  // Holdings with no price contribute 0 to the totals above (there's no
+  // better number to sum) — this note discloses that the totals may
+  // understate reality, rather than letting a silently-0 contribution
+  // look like a complete, accurate figure.
+  const unpricedCount = holdings.filter((h) => h.last_price === null).length;
 
   const bySector = groupBySymbolWithSector(holdings, assetInfo);
   const byCountry = groupByDimension(holdings, assetInfo, "country");
@@ -515,9 +536,24 @@ function HoldingsPageContent() {
               </div>
             </div>
 
+            {unpricedCount > 0 && (
+              <div className="mb-6 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-900/60 dark:text-gray-400">
+                <InfoIcon />
+                <span>
+                  {`${unpricedCount} asset${unpricedCount === 1 ? "" : "s"} ${unpricedCount === 1 ? "doesn't" : "don't"} have a price yet — the totals below don't include ${unpricedCount === 1 ? "its" : "their"} value.`}
+                </span>
+                <Link
+                  href="/prices"
+                  className="ml-auto flex-shrink-0 font-medium underline underline-offset-2 hover:text-gray-900 dark:hover:text-gray-200"
+                >
+                  Add prices →
+                </Link>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <SummaryCard
-                label="Total market value"
+                label="Total current value"
                 value={loadingHoldings ? "—" : formatMoney(totalMarketValue, baseCurrency)}
                 size="hero"
               />
@@ -591,7 +627,7 @@ function HoldingsPageContent() {
                         <th className="px-3 py-3 text-right font-medium">Qty</th>
                         <th className="px-3 py-3 text-right font-medium">Avg Cost</th>
                         <th className="px-3 py-3 text-right font-medium">Last Price</th>
-                        <th className="px-3 py-3 text-right font-medium">Market Value</th>
+                        <th className="px-3 py-3 text-right font-medium">Current Value</th>
                         <th className="px-3 py-3 text-right font-medium">
                           Unrealized P&amp;L
                           <div className="text-[10px] font-normal normal-case text-gray-400 dark:text-gray-500">
@@ -615,11 +651,16 @@ function HoldingsPageContent() {
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                       {holdings.map((h) => {
-                        const pnl = Number(h.unrealized_pnl ?? 0);
+                        // unrealized_pnl/total_return are null (not 0) in the view
+                        // whenever last_price is null — that's a real "can't
+                        // compute this, price unknown," not "P&L is exactly
+                        // zero," so it's preserved as null here rather than
+                        // coerced to 0 like the other numeric fields.
+                        const pnl = h.unrealized_pnl === null ? null : Number(h.unrealized_pnl);
                         const pct =
                           h.unrealized_pct === null ? null : Number(h.unrealized_pct);
                         const netDividends = Number(h.net_dividends ?? 0);
-                        const totalRet = Number(h.total_return ?? 0);
+                        const totalRet = h.total_return === null ? null : Number(h.total_return);
                         const totalRetPct =
                           h.total_return_pct === null ? null : Number(h.total_return_pct);
                         return (
@@ -648,10 +689,12 @@ function HoldingsPageContent() {
                                 : formatMoney(Number(h.market_value), h.currency)}
                             </td>
                             <td
-                              className={`px-3 py-3 text-right font-mono text-xs tabular-nums ${pnlColor(pnl)}`}
+                              className={`px-3 py-3 text-right font-mono text-xs tabular-nums ${pnl === null ? "" : pnlColor(pnl)}`}
                             >
-                              <div className="whitespace-nowrap">{formatSigned(pnl, h.currency)}</div>
-                              {pct !== null && (
+                              <div className="whitespace-nowrap">
+                                {pnl === null ? "—" : formatSigned(pnl, h.currency)}
+                              </div>
+                              {pnl !== null && pct !== null && (
                                 <div className="text-[10px]">{`(${formatPercent(pct)})`}</div>
                               )}
                             </td>
@@ -659,12 +702,12 @@ function HoldingsPageContent() {
                               {formatMoney(netDividends, h.currency)}
                             </td>
                             <td
-                              className={`px-3 py-3 text-right font-mono text-xs tabular-nums ${pnlColor(totalRet)}`}
+                              className={`px-3 py-3 text-right font-mono text-xs tabular-nums ${totalRet === null ? "" : pnlColor(totalRet)}`}
                             >
                               <div className="whitespace-nowrap">
-                                {formatSigned(totalRet, h.currency)}
+                                {totalRet === null ? "—" : formatSigned(totalRet, h.currency)}
                               </div>
-                              {totalRetPct !== null && (
+                              {totalRet !== null && totalRetPct !== null && (
                                 <div className="text-[10px]">{`(${formatPercent(totalRetPct)})`}</div>
                               )}
                             </td>

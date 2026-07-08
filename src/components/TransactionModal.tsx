@@ -6,6 +6,7 @@ import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ASSET_TYPES, CURRENCIES, TAX_BUCKETS, createAsset } from "@/lib/assets";
 import { formatMoney, formatQuantity } from "@/lib/format";
+import { computeTaxHoldingStatus } from "@/lib/taxHolding";
 import type { Asset } from "@/lib/types";
 
 interface Props {
@@ -137,6 +138,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     }
 
     let warningLine = "";
+    let taxWarningLine = "";
     if (type === "sell") {
       const { data: holding, error: holdingError } = await supabase
         .from("holdings")
@@ -152,6 +154,42 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
       if (quantityNum > currentQty) {
         warningLine = `\n\n⚠ You currently hold ${formatQuantity(currentQty)} unit${currentQty === 1 ? "" : "s"} of ${selectedAsset.symbol} — this sells more than you have.`;
       }
+
+      // Thai tax-advantaged funds: warn (don't block, same as the oversell
+      // check above — D44) if any buy lot for this asset hasn't met its
+      // holding-period/age condition yet. Reuses computeTaxHoldingStatus()
+      // as-is; doesn't track which specific lot a sale would draw from
+      // (this app doesn't do per-lot FIFO allocation), so this checks
+      // every buy lot and reports the most conservative (latest) date.
+      if (selectedAsset.tax_bucket !== "normal") {
+        const [{ data: buyLots }, { data: settingsRow }] = await Promise.all([
+          supabase
+            .from("transactions")
+            .select("trade_date")
+            .eq("portfolio_id", portfolioId)
+            .eq("asset_id", selectedAsset.id)
+            .eq("type", "buy"),
+          supabase.from("user_settings").select("birth_date").limit(1).maybeSingle(),
+        ]);
+        const birthDate = settingsRow?.birth_date ?? null;
+        const notYetEligible = (buyLots ?? [])
+          .map((lot) =>
+            computeTaxHoldingStatus({
+              taxBucket: selectedAsset.tax_bucket,
+              tradeDate: lot.trade_date,
+              birthDate,
+            })
+          )
+          .filter((r) => r.status !== "met");
+
+        if (notYetEligible.length > 0) {
+          const latestDate = notYetEligible
+            .map((r) => r.ageEligibleDate ?? r.eligibleDate ?? "")
+            .reduce((max, d) => (d > max ? d : max), "");
+          const lotWord = notYetEligible.length === 1 ? "lot" : "lots";
+          taxWarningLine = `\n\n⚠ ${notYetEligible.length} ${selectedAsset.tax_bucket} ${lotWord} of ${selectedAsset.symbol} ${notYetEligible.length === 1 ? "hasn't" : "haven't"} met the holding-period condition yet (not eligible until ${latestDate}). Selling now may require repaying the tax benefit already claimed on ${notYetEligible.length === 1 ? "that lot" : "those lots"}.`;
+        }
+      }
     }
 
     const total = quantityNum * priceNum + feeNum;
@@ -159,12 +197,12 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     const message =
       `You're about to ${verb} ${formatQuantity(quantityNum)} unit${quantityNum === 1 ? "" : "s"} of ` +
       `${selectedAsset.symbol} at ${formatMoney(priceNum, selectedAsset.currency)} per unit — ` +
-      `total ${formatMoney(total, selectedAsset.currency)} (incl. fee).${warningLine}`;
+      `total ${formatMoney(total, selectedAsset.currency)} (incl. fee).${warningLine}${taxWarningLine}`;
 
     const confirmed = await confirm(message, {
       title: "Confirm transaction",
       confirmLabel: type === "buy" ? "Confirm buy" : "Confirm sell",
-      variant: warningLine ? "danger" : "default",
+      variant: warningLine || taxWarningLine ? "danger" : "default",
     });
     if (!confirmed) return;
 

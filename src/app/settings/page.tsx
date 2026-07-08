@@ -1,0 +1,119 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { CONTAINER_CLASS } from "@/lib/layout";
+import { Toast } from "@/components/Toast";
+
+export default function SettingsPage() {
+  const [rowId, setRowId] = useState<string | null>(null);
+  const [birthDate, setBirthDate] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    const { data, error } = await supabase
+      .from("user_settings")
+      .select("id, birth_date")
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      setError(error.message);
+    } else if (data) {
+      setRowId(data.id);
+      setBirthDate(data.birth_date ?? "");
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, []);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+
+    const payload = { birth_date: birthDate || null };
+    const { data, error } = rowId
+      ? await supabase.from("user_settings").update(payload).eq("id", rowId).select("id").single()
+      : await supabase.from("user_settings").insert(payload).select("id").single();
+
+    if (error) {
+      setError(error.message);
+      setSaving(false);
+      return;
+    }
+
+    setRowId(data.id);
+    setToastMessage("Settings saved.");
+    setSaving(false);
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+      <main className={`${CONTAINER_CLASS} py-10`}>
+        <header className="mb-8">
+          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Personal details used for Thai tax-advantaged fund (RMF/SSF/ThaiESG) holding-period
+            checks.
+          </p>
+        </header>
+
+        {error && (
+          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        ) : (
+          <div className="max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <form onSubmit={handleSave} className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                  Birth date
+                </label>
+                <input
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950"
+                />
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Used only to check RMF&apos;s 55-and-older condition. SSF and ThaiESG have no age
+                  condition.
+                </p>
+                {!birthDate && (
+                  <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                    Enter your birth date to see RMF&apos;s age condition.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-blue-700 hover:shadow-md active:translate-y-0 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm"
+                >
+                  {saving ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </main>
+
+      <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
+    </div>
+  );
+}

@@ -121,3 +121,19 @@ fabricating the update — but from the outside, the two look identical.
 **Prevention:** Before treating a summary of "file X was updated" as
 true, open that file at least once per significant round of work —
 don't just trust the description of what was done.
+
+## #6 — `?? 0` silently turns "unknown" into "value is zero"
+**What happened:** The `holdings` view correctly returns `null` for
+`unrealized_pnl`/`total_return` when there's no price — it genuinely
+can't compute them. But the app code used `Number(h.unrealized_pnl ?? 0)`,
+converting that `null` into `0`. The table then showed "฿0.00" (implying
+P&L is exactly break-even) when the real meaning was "can't be computed,
+price unknown" — a completely different thing.
+
+**Fix:** Keep the `null` as-is instead of defaulting it to `0`, and have
+the UI render "—" for it, matching how `Last Price`/`Market Value`
+already handled the same situation.
+
+**Prevention:** Be careful with `?? 0` (or any default value) on
+financial numbers — "no data" and "data exists and is zero" are two
+different states and must not collapse into the same value.

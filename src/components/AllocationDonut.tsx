@@ -15,7 +15,7 @@ export function AllocationDonut({ title, segments }: Props) {
       </h2>
       {total === 0 ? (
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          No holdings with a market value yet.
+          No holdings with a current value yet.
         </p>
       ) : (
         <div className="flex flex-col items-center gap-6 sm:flex-row">

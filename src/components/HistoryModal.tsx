@@ -9,6 +9,7 @@ import { wouldCauseNegativeHolding } from "@/lib/transactions";
 import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Toast } from "@/components/Toast";
+import { TaxHoldingBadge } from "@/components/TaxHoldingBadge";
 
 interface Props {
   portfolioId: string;
@@ -84,6 +85,29 @@ export function HistoryModal({
   const [tab, setTab] = useState<"transactions" | "dividends">("transactions");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const { confirm, confirmState, handleConfirm, handleCancel } = useConfirm();
+
+  // For the per-row RMF/SSF/ThaiESG holding-period badge. Both fetches
+  // fail soft (badge/row info just doesn't show) — this is a supplementary
+  // detail, not core to viewing/editing transaction history, and
+  // `user_settings` may not exist yet on a database that hasn't run
+  // migrations/0006_add_user_settings.sql.
+  const [taxBucket, setTaxBucket] = useState<string | null>(null);
+  const [birthDate, setBirthDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("assets").select("tax_bucket").eq("id", assetId).maybeSingle();
+      setTaxBucket(data?.tax_bucket ?? null);
+    })();
+    (async () => {
+      const { data } = await supabase
+        .from("user_settings")
+        .select("birth_date")
+        .limit(1)
+        .maybeSingle();
+      setBirthDate(data?.birth_date ?? null);
+    })();
+  }, [assetId]);
 
   // ---- Transactions tab ----
   const [txns, setTxns] = useState<AssetTransaction[]>([]);
@@ -520,6 +544,13 @@ export function HistoryModal({
                           </td>
                           <td className="px-2 py-2">
                             <div className="flex items-center justify-end gap-2">
+                              {t.type === "buy" && taxBucket && taxBucket !== "normal" && (
+                                <TaxHoldingBadge
+                                  taxBucket={taxBucket}
+                                  tradeDate={t.trade_date}
+                                  birthDate={birthDate}
+                                />
+                              )}
                               <button
                                 type="button"
                                 onClick={() => handleEditTxnClick(t)}

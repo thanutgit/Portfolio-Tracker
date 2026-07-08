@@ -51,6 +51,14 @@ Tables:
   `holdings_with_returns`, so it's fetched via one small separate `assets`
   query at snapshot-time only, rather than extending either view. See
   migrations/0005_add_portfolio_snapshots.sql and DECISIONS.md D35–D37.
+- `user_settings` — single row, no `user_id` (no auth yet — see ROADMAP.md
+  Phase 7). Columns: `id`, `birth_date` (nullable), `created_at`. Only
+  used to check RMF's age-55 holding-period condition (Phase 5). App
+  reads it as `select ... limit 1 maybeSingle()`; on save, updates that
+  row by `id` if one exists, else inserts the first one — no DB-level
+  uniqueness constraint enforcing "only one row," the client just always
+  looks for the existing one first. See
+  migrations/0006_add_user_settings.sql.
 
 Views (computed, read-only):
 - `latest_prices` — newest price per asset.
@@ -85,8 +93,51 @@ Every schema change = an ordered file under `migrations/` (`0001_init.sql`,
 
 ## Domain notes (Thai market)
 - Default currency is THB.
-- `tax_bucket`: `RMF` / `SSF` / `ThaiESG` (holding-period rules = later phase).
+- `tax_bucket`: `RMF` / `SSF` / `ThaiESG` (holding-period rules — see
+  "RMF/SSF/ThaiESG holding-period tracking" below).
 - Thai stock dividends carry 10% withholding tax → record in `transactions.tax`.
+
+## RMF/SSF/ThaiESG holding-period tracking
+`computeTaxHoldingStatus()` (`src/lib/taxHolding.ts`) is a pure function
+checking Thai tax-advantaged fund rules **per buy lot, not per asset** —
+each buy transaction has its own holding-period clock, so a single asset
+can have some lots already eligible and others still waiting. Rules
+implemented (checked against published guidance as of July 2026 — these
+can change; the file itself carries this same caveat as a comment so it
+surfaces to whoever edits it next):
+- **RMF**: 5 years from each buy's `trade_date`, **and** the holder must
+  be 55+ (checked against `user_settings.birth_date`).
+- **SSF**: 10 years from each buy's `trade_date`. No age condition.
+- **ThaiESG**: 5 years from each buy's `trade_date`. No age condition.
+- **normal**: no condition at all — the function returns immediately with
+  `status: "no_condition"` and the UI shows nothing.
+
+The function returns `null`/"unknown" fields rather than guessing when
+`birth_date` isn't on file (RMF only) — `ageConditionMet: null` — and the
+UI (`TaxHoldingBadge`) detects that case specifically to show just the
+holding-period side plus a link to `/settings`, rather than a misleading
+met/not-met badge for a condition that can't actually be evaluated yet.
+
+Displayed in `HistoryModal`'s Transactions tab as a small icon (not a
+full-width pill) next to the edit/delete icons on each `buy` row, only
+when the asset's `tax_bucket` isn't `normal` — hover for a tooltip with
+the eligible date, time remaining, and status. Colors are deliberately
+not green/red (DESIGN.md reserves that pair for P&L) — blue for "met,"
+amber for "not yet" (same family as the drift-threshold badge), gray for
+"can't tell yet." See DECISIONS.md for the exact resolution of that color
+choice.
+
+**Sell-time warning**: `TransactionModal` also calls
+`computeTaxHoldingStatus()` when selling a non-`normal`-bucket asset —
+for every buy lot of that asset, not just one. This app doesn't track
+which specific lot a sale draws from (no per-lot FIFO allocation exists
+anywhere in the codebase), so rather than building that out, the check is
+conservative: if *any* lot isn't fully eligible yet, the preview dialog
+(same one that already shows the oversell warning) gets an appended
+warning naming the most restrictive ("latest") not-yet-eligible date
+across all flagged lots. Warns, doesn't block — same philosophy as the
+oversell check (D44): selling is still legitimately possible in real
+life, just potentially at the cost of a claimed tax benefit.
 
 ## Crypto price refresh
 `POST /api/refresh-crypto-prices` (Next.js Route Handler, server-side) fetches

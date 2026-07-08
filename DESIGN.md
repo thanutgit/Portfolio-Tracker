@@ -160,6 +160,22 @@ glowing trend line), but still precise and trustworthy with real money.
   there's nothing to flag: no targets configured, or every asset within
   threshold. No dismiss control and no auto-expiry (unlike `Toast`):
   this is an ambient, always-current status, not a one-time event.
+- **Tax-holding-period icon** (`TaxHoldingBadge`, History modal's
+  Transactions tab): a small clock icon next to the edit/delete icons on
+  each RMF/SSF/ThaiESG buy row — not a full-width pill, to keep the row
+  compact. Hovering shows a tooltip with the eligible date, time
+  remaining (years/months/days), and status. Deliberately does NOT reuse
+  green/red — those stay P&L-only. Instead: **blue** (same
+  neutral-informational treatment as the Buy/Sell toggle, D43) for
+  "conditions met," **amber** (same family as the drift badge) for "not
+  yet, time remaining," **gray** for "can't tell yet" (RMF with no birth
+  date on file — the icon itself is clickable straight to `/settings` in
+  this case, since a hover-only tooltip can't reliably hold a clickable
+  link too). Renders nothing at all for a `normal`-bucket asset. The
+  tooltip uses `position: fixed` (anchored to the icon's on-screen
+  position at hover time), not `absolute` — the Transactions list scrolls
+  under `overflow-y-auto`, which silently clips an `absolute`-positioned
+  tooltip that extends outside it.
 - **Trend chart** (`TrendChart`, Holdings page): a line chart of portfolio
   value over time, built with `recharts` — the accent-blue line (not the
   library's default palette) gets the same permanent soft glow as the

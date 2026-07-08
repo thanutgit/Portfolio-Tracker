@@ -87,7 +87,21 @@
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/shot-overview-full.mjs\")",
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/shot-overview-side-by-side.mjs\")",
       "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-chevron-align.mjs\")",
-      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-chevron-align3.mjs\")"
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-chevron-align3.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/taxholding-validate.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-tax-buckets.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-settings.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/smoke-taxbadge-normal.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/test-tax-badge-rmf.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/open-web.mjs\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/holdings)",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-unpriced.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/test-unpriced-fix.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/test-tax-icon-and-sell-warning.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-tooltip-clip.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-and-fix-bbharata.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/shot-tooltip-fixed.mjs\")",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-rename.mjs\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\Thanu\\Desktop\\PP\\Claude\\Portfolio Tracker\\src\\app\\api"

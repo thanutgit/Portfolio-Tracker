@@ -1277,3 +1277,223 @@
 - No design decisions to flag — this round's spec (exact sizes, gaps,
   padding, centering rule, and the "collapse when no badges" case) was
   fully explicit.
+
+## 2026-07-08 — RMF/SSF/ThaiESG holding-period tracking (Phase 5 slice — live price APIs not done yet)
+- **New migration `migrations/0006_add_user_settings.sql`** (given to the
+  user, not run): `user_settings` table (`id`, `birth_date` nullable,
+  `created_at`) — single row, no `user_id` yet (no auth — see ROADMAP.md
+  Phase 7). Client reads it as `select ... limit 1 maybeSingle()`; saves
+  either update the existing row or insert the first one.
+- New `src/lib/taxHolding.ts`: pure `computeTaxHoldingStatus()` function,
+  evaluating rules **per buy lot** (each buy transaction has its own
+  holding-period clock, not one clock per asset) — RMF: 5 years + age 55;
+  SSF: 10 years, no age condition; ThaiESG: 5 years, no age condition;
+  normal: no condition. Rules are commented with "checked as of July
+  2026, re-verify before relying on this for a filing," per the ask.
+  - Validated against 9 hand-computed known-answer cases in a scratchpad
+    script (matching the XIRR precedent — no test framework in this
+    project yet): exact boundary cases (bought exactly 5 years before
+    today = met; 1 day short = not met), RMF with age already satisfied,
+    RMF with holding met but age not met, RMF with holding not yet met
+    regardless of age, SSF/ThaiESG without any age condition, and the
+    `normal` no-condition case.
+  - `ageConditionMet` is `null` (not guessed) when RMF's `birth_date`
+    isn't on file — the UI detects this specifically rather than showing
+    a misleading met/not-met badge for a condition that can't actually be
+    checked yet.
+- **New `/settings` page** (added to nav): a single "Birth date" field,
+  reading/writing the one `user_settings` row. Shows an inline amber note
+  when the field is empty ("Enter your birth date to see RMF's age
+  condition"). Correctly surfaces a real inline error before the
+  migration is applied ("Could not find the table 'public.user_settings'
+  in the schema cache") rather than crashing — verified live.
+- **New `src/components/TaxHoldingBadge.tsx`**: renders under each `buy`
+  row in `HistoryModal`'s Transactions tab, only when the asset's
+  `tax_bucket` isn't `normal`. Colors deliberately avoid green/red
+  (reserved for P&L) — blue for "met" (same neutral treatment as the
+  Buy/Sell toggle, D43), amber for "not yet, N days left" (same family as
+  the drift-threshold badge), gray for "can't tell yet" (RMF, no birth
+  date), paired with a link to `/settings` in that last case. The
+  original ask's own example text used green for "met," but its very next
+  sentence explicitly said not to reuse P&L green/red and pointed at the
+  drift badge's treatment instead — resolved in favor of the explicit
+  correction over the illustrative example; flagged for DECISIONS.md.
+- **Fixed a real CSS bug found during live testing**: the transaction
+  table's type cell used `className="... capitalize"` at the `<td>`
+  level (meant only to capitalize "buy"/"sell") — since the new badge and
+  its "Enter birth date..." link render inside that same cell, the
+  `capitalize` transform was cascading into them too, rendering "1822d
+  Until Holding Period Met" and "Enter Birth Date To Check The Age
+  Condition" instead of natural sentence case. Fixed by moving
+  `capitalize` onto a `<span>` wrapping just the type text.
+- Verified live, carefully, since real assets all currently have
+  `tax_bucket = 'normal'`: confirmed no badge appears on any real
+  transaction row (correct — nothing to show). With the user's explicit
+  permission (asked first, per the new CLAUDE.md rule), temporarily set
+  one real asset's (`B-BHARATA`) `tax_bucket` to `RMF` via the existing
+  `/assets` edit form, confirmed the badge renders correctly (gray "1822d
+  until holding period met" + the birth-date link, since holding isn't
+  met and age is unknown), screenshotted it, then reverted the asset back
+  to `normal` immediately after and confirmed the revert took — zero
+  lasting change to real data. SSF/ThaiESG paths (simpler — no age
+  branch) were verified via the already-passing unit tests and code
+  review only, not an additional live change.
+- ARCHITECTURE.md, DESIGN.md, ROADMAP.md, migrations/README.md updated:
+  new "RMF/SSF/ThaiESG holding-period tracking" architecture section, a
+  DESIGN.md Components entry for the badge's color scheme, Phase 5 marked
+  in progress with the holding-period slice done (live price APIs still
+  open), and the new migration listed.
+- Design decisions to consider logging in DECISIONS.md (not yet saved):
+  (1) resolved the ask's internal contradiction (example said green for
+  "met," the very next clause said don't reuse P&L green/red) by
+  following the explicit correction — blue for "met," not green;
+  (2) holding-period rules evaluated per individual buy lot, not per
+  asset as a whole, since each purchase has its own 5/10-year clock under
+  the real tax rules; (3) `ageConditionMet: null` (unknown) rather than
+  guessing when birth_date is missing, with the UI branching on that
+  explicitly rather than folding it into a 3rd status enum value;
+  (4) no test framework added — validated via an ad-hoc script, same as
+  XIRR.
+
+## 2026-07-08 — Fix: unpriced holdings showed "฿0.00" for P&L instead of "—" (misleading, not just cosmetic)
+- **Bug**: `holdings`/`holdings_with_returns` correctly return `null` for
+  `unrealized_pnl`/`total_return` (and their `%`) when `last_price` is
+  null — the SQL views can't compute market value or P&L without a
+  price, so they say so. But `holdings/page.tsx` was coercing those with
+  `Number(h.unrealized_pnl ?? 0)`, turning a real "unknown" into a false
+  "exactly zero" — indistinguishable from an asset that's genuinely
+  flat. `Last Price`/`Market Value` already correctly showed "—" for the
+  same rows; P&L just hadn't gotten the same treatment.
+- **Fix**: `pnl`/`totalRet` now preserve `null` instead of defaulting to
+  0, and the table renders "—" (no color, no `%`) for both cells when
+  null — matching the existing `Last Price`/`Market Value` pattern
+  exactly. `Dividends` is untouched — `net_dividends` doesn't depend on
+  price at all, so a real "no dividends" is still correctly `฿0.00`, not
+  affected by this bug.
+- **Summary cards** (Total market value / Unrealized P&L / Total
+  Return): these are running sums across all holdings, and an unpriced
+  holding still contributes `0` to each (there's no better number to add
+  for "unknown"). Rather than silently understating the totals with no
+  indication, added a new disclosure note above the summary cards —
+  shown only when at least one holding lacks a price — stating the count
+  and that the totals below may not include its/their value, with a link
+  to `/prices`. Considered excluding the unpriced holding from the sums
+  entirely instead, but that would make `Total market value` and `Total
+  cost basis` inconsistent with each other for that same holding (cost
+  basis is always known; market value wouldn't be) in a way that's
+  harder to explain than a plain disclosure — flagged for DECISIONS.md.
+- Verified live, with the user's explicit permission (asked first): all
+  8 real holdings currently have prices, so created one throwaway asset
+  (`TESTNOPRICE1`) with a single buy and no `prices` row (buying doesn't
+  create one — only `/prices` or the crypto refresh does), confirmed
+  `Last Price`/`Market Value`/`Unrealized P&L`/`Total Return` all show
+  "—" while `Dividends` correctly still shows `฿0.00`, and the new
+  disclosure banner appeared with the right count and link. Caught and
+  fixed a real copy bug along the way: the banner initially rendered as
+  "1 assetdon't have a price yet" (a missing space from JSX splitting the
+  sentence across multiple adjacent `{expr} text` children) — rebuilt as
+  a single template-literal string instead of relying on JSX's per-child
+  whitespace handling, and fixed "1 asset don't" → "1 asset doesn't"
+  (singular/plural verb agreement) while at it. Re-verified after the
+  fix, then deleted the test transaction and test asset via the app's
+  own delete features — confirmed zero residual test data and the
+  banner disappearing again once the unpriced holding was gone.
+- Design decision to consider logging in DECISIONS.md (not yet saved):
+  kept unpriced holdings contributing `0` to the portfolio-total sums
+  (rather than excluding them) paired with a visible disclosure banner,
+  since exclusion would make the market-value and cost-basis totals
+  inconsistent for that holding in a more confusing way than a plain
+  "N assets don't have a price yet" note.
+
+## 2026-07-08 — Tax-holding badge becomes a compact icon+tooltip; new sell-time tax warning
+- **`TaxHoldingBadge` rebuilt as a small icon, not a full-width pill**:
+  now sits next to the edit/delete icons on each RMF/SSF/ThaiESG buy row
+  in `HistoryModal`'s Transactions tab, instead of taking its own line
+  under the row. Hovering shows a tooltip with the eligible date, time
+  remaining (exact calendar years/months/days, not a rough days/365
+  estimate), and status — same colors as before (blue = met, amber = not
+  yet, gray = can't tell / no birth date on file).
+  - **Found and fixed a real clipping bug**: the tooltip was initially
+    built with `position: absolute`, anchored inside the icon. It never
+    appeared — the Transactions list scrolls under `max-h-64
+    overflow-y-auto`, which silently clips any absolutely-positioned
+    child that extends outside its box, and the tooltip (opening upward)
+    always did. Rebuilt using `position: fixed`, with the icon's own
+    `getBoundingClientRect()` captured on hover to compute the tooltip's
+    on-screen coordinates — `fixed` positioning escapes scrollable
+    ancestors entirely, since it's relative to the viewport. Also moved
+    the tooltip to open *below* the icon rather than above, after noticing
+    it could overlap the tab buttons when a row sits near the top of a
+    short list.
+  - The "no birth date" (RMF, unknown age) case no longer renders a
+    separate `<Link>` below a pill — the icon itself is now directly
+    clickable to `/settings` (via `useRouter().push()`, since a
+    hover-only tooltip can't reliably also hold a clickable link).
+- **New sell-time tax warning** in `TransactionModal`: selling a
+  non-`normal`-bucket asset now checks every buy lot for that asset (not
+  just one) via the existing `computeTaxHoldingStatus()` — no new
+  eligibility logic was written, per the ask. If any lot isn't fully
+  eligible, the existing preview/confirm dialog (same one that already
+  shows the oversell warning) gets an appended line, e.g. "1 RMF lot of
+  X hasn't met the holding-period condition yet (not eligible until
+  ...). Selling now may require repaying the tax benefit already
+  claimed." **Warns, doesn't block** — same D44 philosophy as the
+  oversell check.
+  - This app doesn't track which specific lot a sale draws from (no
+    per-lot FIFO allocation exists anywhere in the codebase), so the
+    check is intentionally conservative: it reports the single latest
+    ("most restrictive") not-yet-eligible date across *all* flagged
+    lots — preferring the age-55 date over the holding-period date when
+    both apply and age is later, since that's the true binding
+    constraint once both conditions are considered together.
+- Verified live, with the user's explicit permission (asked again this
+  round, per CLAUDE.md — separate from the earlier badge-redesign
+  permission): temporarily set `B-BHARATA` to `RMF`, confirmed the
+  compact icon appears next to edit/delete, confirmed the hover tooltip
+  text and positioning (first attempt showed nothing at all — the
+  clipping bug above, caught by this same live test), opened "+ Add
+  transaction," selected Sell for that asset, confirmed the preview
+  dialog shows the tax warning with an accurate date, then **cancelled**
+  rather than confirming (no sell was actually recorded). Reverted the
+  asset back to `normal` afterward each time.
+  - **Caught a real test-hygiene slip along the way**: one verification
+    script crashed mid-run, before reaching its own revert step, leaving
+    `B-BHARATA` set to `RMF` in the live database. Caught this on the
+    very next check (rather than assuming a prior "reverted: yes" log was
+    still accurate) and fixed it immediately with a dedicated
+    check-and-revert script before continuing.
+- ARCHITECTURE.md and DESIGN.md updated: the tax-holding-period section
+  now describes the icon+tooltip (not pill) presentation, the `fixed`-
+  positioning fix and why, and the new sell-time warning's per-lot,
+  most-restrictive-date logic.
+- Design decisions to consider logging in DECISIONS.md (not yet saved):
+  (1) sell-time warning checks *every* buy lot and reports the most
+  restrictive date, rather than building per-lot FIFO sale allocation
+  (out of scope per the ask, which said to reuse existing logic as-is);
+  (2) tooltip uses `position: fixed` with hover-time JS positioning
+  instead of a CSS-only `absolute` tooltip, specifically to escape the
+  Transactions list's scroll container.
+
+## 2026-07-08 — Renamed "Market Value" to "Current Value" (Holdings table + summary card)
+- Wording-only change, no calculation logic touched — still `quantity ×
+  last_price` exactly as before. Renamed in both places this term
+  appeared as a user-facing label on the Holdings page: the table's
+  column header (`Market Value` → `Current Value`) and the summary card
+  (`Total market value` → `Total current value`), so the two stay
+  consistent with each other.
+- Also updated `AllocationDonut`'s empty-state message ("No holdings
+  with a market value yet" → "...a current value yet") for the same
+  reason — it uses the identical underlying `market_value` figures, so
+  leaving it worded differently would have reintroduced the exact
+  inconsistency this task was asked to fix.
+- Left `ARCHITECTURE.md` and a `holdings/page.tsx` code comment
+  referencing "market value" unchanged — those describe the underlying
+  `holdings` view's actual `market_value` column/field, which is a
+  schema/data-layer name, not a UI label, and isn't part of this rename.
+  `CHANGELOG.md`/`DECISIONS.md` entries that used the old wording were
+  also left as-is, since both are append-only historical logs, not
+  living documentation.
+- Verified live: confirmed both "CURRENT VALUE" (table header) and
+  "TOTAL CURRENT VALUE" (summary card) render correctly, and confirmed
+  no leftover "MARKET VALUE" text remains anywhere on the page. Read-only
+  check — no data touched.

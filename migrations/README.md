@@ -21,6 +21,7 @@ DECISIONS.md D11).
 | 0003_add_crypto_asset_type.sql | Adds `crypto` as an allowed `asset_type` (for Bitcoin etc.) |
 | 0004_add_dividend_returns.sql | Phase 3 (dividends slice): `dividend_income` + `holdings_with_returns` views — net dividends and total_return, built on top of `holdings` |
 | 0005_add_portfolio_snapshots.sql | Phase 4 (snapshots slice): `portfolio_snapshots` table (portfolio_id, snapshot_date, total_value, total_cost, cash_value) — daily portfolio value history for a future growth chart |
+| 0006_add_user_settings.sql | Phase 5 (RMF holding-period slice): `user_settings` table (`id`, `birth_date`, `created_at`) — single-row, no `user_id` yet (no auth — see ROADMAP.md Phase 7); used only to check RMF's age-55 condition |
 
 ## Applying migrations
 Run the file's contents in the Supabase SQL Editor, in order. There's no

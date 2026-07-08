@@ -273,3 +273,18 @@ Matches the spec as literally given.
 
 ## D61 — No test framework added for `xirr()`; verified with an ad-hoc script instead
 Consistent with how this session has verified everything else so far.
+
+## D62 — TaxHoldingBadge uses blue for "conditions met," not green (resolves a self-contradicting spec)
+The original ask specified both "green for conditions met" and "don't use
+green/red — reserved for P&L," which conflict. Followed the more explicit
+rule (no green/red) and used blue instead, matching the same precedent as
+the Buy/Sell toggle (D43). Amber = not yet met, gray = can't be checked
+(no birth date on file).
+
+## D63 — Unpriced holdings still contribute 0 to portfolio totals (Total Market Value, etc.), with a banner instead of excluding them
+Excluding an unpriced holding from the totals entirely would make Total
+Market Value and Total Cost Basis inconsistent with each other (cost
+basis is always known; market value isn't, without a price). That
+inconsistency is more confusing than just disclosing directly, via a
+banner, that some assets don't have a price yet and the totals may be
+incomplete.
