@@ -341,3 +341,15 @@ Reuses the same logic as the existing Overview-page special case.
 
 ## D75 — No confirm-password field on signup, no OAuth
 Followed the given scope exactly, without building beyond it.
+(Confirm-password superseded by D76 once real-time validation was added.)
+
+## D76 — Password checklist is one combined list below both password fields, not split per-field (supersedes D75's no-confirm-password part)
+Easier to scan in one place, and keeps a single source of truth for
+"can I submit yet."
+
+## D77 — "Special character" means any non-alphanumeric character, not a fixed allowlist
+The `!@#$%^&*` examples in the ask were just examples, not an
+exhaustive list.
+
+## D78 — Reused TaxHoldingBadge's blue/gray colors for the checklist instead of inventing new ones
+Keeps green/red reserved for P&L only, per DESIGN.md.

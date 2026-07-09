@@ -1649,3 +1649,38 @@
   behavior choices, redirect-after-logout target, hiding nav tabs on
   auth pages, not adding a confirm-password field, reusing
   `AuthCard`/modal chrome instead of Supabase Auth UI).
+
+## 2026-07-09 — Real-time password validation on /signup
+- **New "Confirm password" field**, plus a live checklist under both
+  password fields, re-evaluated on every keystroke (no waiting for
+  submit): at least 12 characters, one uppercase letter, one number,
+  one special character, and passwords matching. Pure rule logic
+  extracted to `src/lib/passwordRules.ts` (`checkPasswordRules()` /
+  `allPasswordRulesMet()`), following the same pattern as other pure
+  domain functions in `src/lib/` (`xirr.ts`, `drift.ts`, etc.).
+  "Special character" is deliberately any non-alphanumeric character,
+  not a fixed allowlist — the ask gave `!@#$%^&*` as examples, not an
+  exhaustive set.
+- Each rule renders as its own line with a checkmark (met) or dot (not
+  yet) — reuses `TaxHoldingBadge`'s blue-for-met/gray-for-not-yet
+  treatment (D62), not green/red, consistent with DESIGN.md reserving
+  that pair for P&L only.
+- "Sign up" is disabled until every rule passes (including the match
+  check) — also re-checked inside `handleSubmit` itself as a defensive
+  guard, in case Enter-to-submit ever bypassed the disabled button.
+- Confirmed this doesn't interfere with Supabase's own signup errors
+  (duplicate email, rate limit, etc.) — the `error` state and the new
+  checklist are fully independent; both can render in the same card at
+  once.
+- Verified live with Playwright against the dev server: screenshotted
+  the empty, weak-password, mismatched-confirm, and all-rules-met
+  states; confirmed the submit button's disabled state flips correctly
+  at each stage; confirmed a real Supabase error ("email rate limit
+  exceeded", still active from the previous round's testing) still
+  renders correctly alongside the new checklist UI, unobstructed. No
+  live signups were attempted this round (still rate-limited from
+  before), so no cleanup was needed.
+- Design decisions worth logging in DECISIONS.md (not yet saved): see
+  the response for this round (checklist placement below both password
+  fields rather than split per-field, special-character definition,
+  reusing the TaxHoldingBadge color convention).

@@ -102,6 +102,15 @@ no server middleware or route protection in this step.
   Supabase project requires email confirmation (this project does), `signUp()`
   returns a user but no session — the page shows a "check your email" message
   instead of redirecting, since there's no session to redirect with yet.
+  Has a "Confirm password" field plus a live checklist (`src/lib/
+  passwordRules.ts`) checked on every keystroke — 12+ characters, one
+  uppercase, one number, one special character (any non-alphanumeric, not a
+  fixed allowlist), and matching confirm-password. Each rule renders as its
+  own line (checkmark = met, dot = not yet), same blue-for-met/gray-for-not-
+  yet treatment as `TaxHoldingBadge` (D62) — not green/red. "Sign up" stays
+  disabled until every rule passes; this is separate from, and doesn't
+  suppress, the `error` state that shows Supabase's own signup errors (e.g.
+  duplicate email, rate limit) — the two coexist in the same card.
 - Both pages share `AuthCard` (`src/components/AuthCard.tsx`) — same card
   chrome as the app's existing modals (`rounded-xl border shadow-lg`), not
   Supabase Auth UI's prebuilt component, so they match the rest of the app.
