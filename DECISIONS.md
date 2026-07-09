@@ -316,3 +316,28 @@ Rather than inventing a new button style, it reuses the app's standard
 soft-shadow/hover-lift/press-down button pattern already used
 everywhere else, only changing the shape to a pill (`rounded-full`) to
 read as a compact, secondary action next to the portfolio name.
+
+## D70 — Benchmark comparison (SET/S&P 500) dropped from the roadmap, not built
+S&P 500 has a genuine free API (FRED), but SET Index doesn't — the
+official source is a paid service only. Building half the feature
+(auto for S&P 500, manual entry for SET) would add code complexity
+without enough benefit to justify it. Decided not to build this
+feature at all.
+
+## D71 — `portfolios.user_id` FK uses `on delete set null`, not `cascade`
+Losing an auth user shouldn't delete real financial data along with
+it, unlike ordinary supplementary data.
+
+## D72 — `user_settings.user_id` FK uses `on delete cascade`
+This is minor data (just a birth date) — fine for it to disappear
+along with the user.
+
+## D73 — Logout redirects to `/`, not `/login`
+Nothing is actually gated yet, so `/` is the less confusing landing
+spot.
+
+## D74 — NavBar hides portfolio tabs on `/login` and `/signup`
+Reuses the same logic as the existing Overview-page special case.
+
+## D75 — No confirm-password field on signup, no OAuth
+Followed the given scope exactly, without building beyond it.

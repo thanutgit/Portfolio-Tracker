@@ -1589,3 +1589,63 @@
   the app's existing secondary-button depth treatment (soft shadow,
   hover-lift, press-down) for "Switch portfolio" rather than inventing a
   new button style, just switched to `rounded-full` for the pill shape.
+
+## 2026-07-09 — Phase 7 step 1: login/signup UI + auth schema prep (RLS/data migration/route protection deliberately NOT done yet)
+- **New migration, NOT yet applied to the live database**:
+  `migrations/0007_add_auth_user_id.sql`. Adds the
+  `portfolios.user_id → auth.users` foreign key (the `user_id` column
+  itself already existed, unreferenced, since `0001_init.sql` —
+  discovered while reading the schema; this migration only adds the FK,
+  not a new column). Adds `user_settings.user_id` (nullable, unique)
+  so settings can eventually move off today's single-row convention.
+  Both stay nullable — not enforced `not null` until real data has been
+  assigned an owner in a later step. RLS is NOT enabled by this
+  migration. `assets`/`prices` untouched (shared across all users, per
+  the existing plan).
+- **New `/login` and `/signup` pages**, Supabase Auth built-in
+  (email/password only, no OAuth). `signInWithPassword()` /
+  `signUp()` via the existing publishable-key client — no server
+  middleware. Signup shows a "check your email to confirm" message
+  instead of redirecting when the Supabase project requires email
+  confirmation (this one does) — `signUp()` returns no session in that
+  case, so there's nothing to redirect with yet.
+- **New shared `AuthCard`** component (`src/components/AuthCard.tsx`) —
+  same card chrome as the app's existing modals (rounded-xl, border,
+  `shadow-lg`), used by both new pages, instead of Supabase Auth UI's
+  own prebuilt component (which ships its own theme, not this app's).
+- **NavBar**: tracks session via `getSession()` +
+  `onAuthStateChange()`; shows a "Log out" pill button when signed in
+  (calls `signOut()`, redirects to `/`) or a plain "Log in" link when
+  signed out. Portfolio tabs are hidden on `/login`/`/signup`, same
+  reasoning as the existing Overview-page special case (no
+  portfolio/user context on either).
+- **Deliberately not done this round** (separate, riskier steps for
+  later, per the explicit ask): RLS is still off; no existing data
+  has been assigned a real `user_id`; no route protection or
+  logged-out redirect exists anywhere — every page still behaves
+  exactly as it did before this change, fully usable without logging
+  in.
+- Verified live with Playwright against the dev server: `/login` and
+  `/signup` render with the correct card styling (screenshotted both);
+  NavBar correctly hides portfolio tabs on both auth pages and shows
+  "Log in" on Overview when signed out; a wrong-credentials login
+  attempt shows Supabase's real inline error ("Invalid login
+  credentials") without navigating away. A full signup→confirm→login
+  round trip could not be completed in this session: Supabase rejected
+  `@example.com` test addresses as invalid (its own built-in domain
+  validation), and a follow-up attempt with a real-format address hit
+  Supabase's email-send rate limit from the repeated test attempts.
+  Confirmed no test user was actually created in either case (both
+  attempts errored before an account was made), so nothing needed
+  cleanup. Asked the user for permission before attempting any
+  signup that would touch the live Supabase Auth database, per
+  CLAUDE.md.
+- ARCHITECTURE.md and ROADMAP.md updated: new "Auth (Phase 7, step 1)"
+  section, `user_settings` data-model note updated to mention the new
+  (unused-so-far) `user_id` column, and Phase 7 broken into its 4
+  steps with step 1 marked done.
+- Design decisions worth logging in DECISIONS.md (not yet saved): see
+  the response for this round for the full list (FK `on delete`
+  behavior choices, redirect-after-logout target, hiding nav tabs on
+  auth pages, not adding a confirm-password field, reusing
+  `AuthCard`/modal chrome instead of Supabase Auth UI).

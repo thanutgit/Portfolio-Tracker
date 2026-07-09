@@ -51,13 +51,18 @@ Tables:
   `holdings_with_returns`, so it's fetched via one small separate `assets`
   query at snapshot-time only, rather than extending either view. See
   migrations/0005_add_portfolio_snapshots.sql and DECISIONS.md D35–D37.
-- `user_settings` — single row, no `user_id` (no auth yet — see ROADMAP.md
-  Phase 7). Columns: `id`, `birth_date` (nullable), `created_at`. Only
-  used to check RMF's age-55 holding-period condition (Phase 5). App
-  reads it as `select ... limit 1 maybeSingle()`; on save, updates that
-  row by `id` if one exists, else inserts the first one — no DB-level
-  uniqueness constraint enforcing "only one row," the client just always
-  looks for the existing one first. See
+- `user_settings` — single row (app still reads/writes it that way; see
+  below). Columns: `id`, `birth_date` (nullable), `created_at`, and now
+  `user_id` (nullable uuid, unique, references `auth.users` — added by
+  `migrations/0007_add_auth_user_id.sql`, prepared but not yet applied
+  or used by the app; see ARCHITECTURE.md's Auth section and
+  ROADMAP.md Phase 7). Only used to check RMF's age-55 holding-period
+  condition (Phase 5). App reads it as `select ... limit 1
+  maybeSingle()`; on save, updates that row by `id` if one exists, else
+  inserts the first one — no DB-level uniqueness constraint enforcing
+  "only one row" yet at the app-query level (the new `user_id` unique
+  constraint only takes effect once the app actually starts writing a
+  real `user_id`, which it doesn't yet). See
   migrations/0006_add_user_settings.sql.
 
 Views (computed, read-only):
@@ -84,8 +89,38 @@ guards against duplicate inserts).
   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
 - SECRET key bypasses RLS — server-only, never in a client bundle, never in git.
 - Secrets live in `.env.local` (gitignored). No key values in committed docs.
-- RLS is OFF now (single-user dev). Enable it when auth is added:
-  policy `auth.uid() = portfolios.user_id`.
+- RLS is still OFF (Phase 7 step 1 only added login/signup — see below and
+  ROADMAP.md). Enable it once existing data has real owners: policy
+  `auth.uid() = portfolios.user_id`.
+
+## Auth (Phase 7, step 1 — login/signup only, not enforced yet)
+Supabase Auth built-in, email/password only (no OAuth yet). Client-side only
+via the existing publishable-key `supabase` client (`src/lib/supabase.ts`) —
+no server middleware or route protection in this step.
+- `/login` (`src/app/login/page.tsx`) — `supabase.auth.signInWithPassword()`.
+- `/signup` (`src/app/signup/page.tsx`) — `supabase.auth.signUp()`. If the
+  Supabase project requires email confirmation (this project does), `signUp()`
+  returns a user but no session — the page shows a "check your email" message
+  instead of redirecting, since there's no session to redirect with yet.
+- Both pages share `AuthCard` (`src/components/AuthCard.tsx`) — same card
+  chrome as the app's existing modals (`rounded-xl border shadow-lg`), not
+  Supabase Auth UI's prebuilt component, so they match the rest of the app.
+- `NavBar` tracks auth state via `supabase.auth.getSession()` +
+  `onAuthStateChange()`, showing "Log out" (calls `signOut()`, redirects to
+  `/`) when signed in or a "Log in" link when signed out. Portfolio tabs are
+  hidden on `/login`/`/signup`, same reasoning as Overview (no
+  portfolio/user context there yet).
+- **No route protection or redirect yet** — every page still works fully
+  logged-out, identical to before this change. That, plus enabling RLS and
+  migrating existing data to real `user_id` owners, is deliberately deferred
+  to a later, separate step (see ROADMAP.md Phase 7) since it's riskier and
+  shouldn't ship in the same round as the login UI itself.
+- Schema prep for this step lives in `migrations/0007_add_auth_user_id.sql`
+  (not yet applied — see the file and DECISIONS.md): adds the
+  `portfolios.user_id → auth.users` foreign key (the column itself already
+  existed, unreferenced, since `0001_init.sql`), and adds a nullable, unique
+  `user_settings.user_id` so settings can eventually move off its current
+  single-row convention. Both stay nullable until the data-migration step.
 
 ## Database migrations
 Every schema change = an ordered file under `migrations/` (`0001_init.sql`,

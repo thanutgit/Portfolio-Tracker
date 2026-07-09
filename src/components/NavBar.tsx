@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { CONTAINER_CLASS } from "@/lib/layout";
 
 const LINKS = [
@@ -21,10 +23,35 @@ const ACTIVE_CLASS =
 export function NavBar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setEmail(data.session?.user.email ?? null);
+    });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setEmail(session?.user.email ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    // No route protection yet (Phase 7 step 1 only) — every page still
+    // works fully logged-out, so "/" is a safe, non-confusing landing
+    // spot rather than forcing straight to /login.
+    router.push("/");
+  }
+
   // Overview ("/") has no portfolio selected yet, so the other tabs (which
   // all operate on a selected portfolio) don't mean anything there — just
-  // the brand alone, no tabs beside it.
+  // the brand alone, no tabs beside it. Same reasoning applies to the auth
+  // pages: no portfolio/user context yet either.
   const isOverview = pathname === "/";
+  const isAuthPage = pathname === "/login" || pathname === "/signup";
   const portfolioId = searchParams.get("portfolio");
 
   return (
@@ -40,6 +67,7 @@ export function NavBar() {
           </span>
         </Link>
         {!isOverview &&
+          !isAuthPage &&
           LINKS.map((link) => {
             const href =
               link.portfolioScoped && portfolioId
@@ -55,6 +83,26 @@ export function NavBar() {
               </Link>
             );
           })}
+
+        <div className="ml-auto flex items-center gap-3">
+          {email ? (
+            <button
+              onClick={handleLogout}
+              className="cursor-pointer rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-gray-50 hover:shadow-md active:translate-y-0 active:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              Log out
+            </button>
+          ) : (
+            !isAuthPage && (
+              <Link
+                href="/login"
+                className="cursor-pointer text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+              >
+                Log in
+              </Link>
+            )
+          )}
+        </div>
       </div>
     </nav>
   );
