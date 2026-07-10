@@ -188,9 +188,37 @@ life, just potentially at the cost of a claimed tax benefit.
 BTC/THB (and ETH/THB) from CoinGecko's free public API (no key) and inserts
 into `prices` with `source = 'api'`. Manually triggered from the Holdings page
 button — no background job/cron yet. Only assets whose symbol has a known
-CoinGecko id are refreshed (see `COINGECKO_IDS` in the route); other
+CoinGecko id are refreshed (see `COINGECKO_IDS`, now shared from
+`src/lib/coingecko.ts` rather than declared locally — also used by the Prices
+page to exclude these assets from its manual-entry picker); other
 `asset_type = 'crypto'` assets are reported as skipped, not silently ignored.
 Thai funds have no public price API and stay manual. See DECISIONS.md.
+
+## Manual price entry (Prices page)
+`src/app/prices/page.tsx` has two entry modes, switched via a tab (no route
+change — same page, local `mode` state):
+- **Select from list** (default): one row per asset, each with the same
+  search-then-pick combobox pattern as `TransactionModal`'s asset picker
+  (minus "add new asset" — Prices only prices assets that already exist).
+  The picker excludes any asset with `hasAutoFetch(symbol)` true (from
+  `src/lib/coingecko.ts` — currently BTC/ETH), so there's no dropdown path to
+  manually re-enter a price that auto-refresh already covers, and excludes
+  whatever's already picked in another row of the same batch. "+ Add another
+  asset" appends more rows for entering several prices in one batch.
+- **Paste CSV**: unchanged from before — one `symbol,price` (or tab-
+  separated) pair per line, matched by symbol text. Kept as a secondary tab
+  for bulk entry from a prepared spreadsheet, rather than removed.
+- Both modes feed the same `runPreview()` → preview table → confirm/save
+  pipeline (old price → new price → % diff, warns above `DIFF_WARNING_PCT`)
+  — only how the `{symbol, price}` entries get built differs. When an entry
+  carries a known `assetId` (always true for "Select from list", picked
+  directly from the dropdown), matching uses that id directly rather than a
+  symbol-text lookup, so it can't accidentally match the wrong asset if two
+  assets ever share a symbol on different markets — CSV-paste entries still
+  match by symbol text only, since that mode never has an id to begin with.
+  Saved rows are tagged `source: 'manual'` for the list-picker path (vs.
+  `'csv'` for pasted rows), distinguishing the two in the `prices` table.
+  Switching tabs clears any in-progress preview from the other mode.
 
 ## Portfolio trend chart
 `TrendChart` (`src/components/TrendChart.tsx`) plots `portfolio_snapshots`

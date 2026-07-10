@@ -353,3 +353,22 @@ exhaustive list.
 
 ## D78 — Reused TaxHoldingBadge's blue/gray colors for the checklist instead of inventing new ones
 Keeps green/red reserved for P&L only, per DESIGN.md.
+
+## D79 — Assets with auto-fetch (BTC/ETH) are excluded from the Prices picker entirely, no manual override
+Avoids a confusing situation over which price "wins" between a manual
+entry and the auto-refreshed one.
+
+## D80 — An asset already picked in one row is excluded from other rows' dropdowns in the same batch
+Prevents the same asset from being queued with two conflicting prices
+at once.
+
+## D81 — "Paste CSV" tab kept permanently, not removed
+Supports users who prepare prices in a spreadsheet and want to paste
+them in one go.
+
+## D82 — List-picker saves are tagged `source: 'manual'`, CSV saves `source: 'csv'`
+Keeps each row's price source distinguishable for later review.
+
+## D83 — When the asset id is already known (list-picker), match by id directly instead of symbol text like the CSV path
+Slightly more accurate. The CSV path has no id available up front, so
+it still has to match by symbol text.

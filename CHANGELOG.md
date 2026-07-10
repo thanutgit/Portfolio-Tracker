@@ -1684,3 +1684,60 @@
   the response for this round (checklist placement below both password
   fields rather than split per-field, special-character definition,
   reusing the TaxHoldingBadge color convention).
+
+## 2026-07-10 — Prices page: pick assets from a dropdown instead of typing symbols, CSV paste kept as a second tab
+- **New "Select from list" mode** (now the default tab): one row per
+  asset, each using the same search-then-pick combobox pattern as
+  `TransactionModal`'s asset picker (without "add new asset" — Prices
+  only sets prices for assets that already exist). "+ Add another
+  asset" appends more rows, so entering several prices in one batch
+  still works exactly like before, just via picking instead of typing
+  CSV lines.
+- The picker excludes any asset with its own auto-refresh (BTC/ETH via
+  CoinGecko) — picking one from the list to manually re-enter its price
+  would just be redundant with the automated refresh — and excludes
+  whatever's already picked in another row of the same batch, so the
+  same asset can't accidentally get two different prices queued in one
+  go.
+- **`COINGECKO_IDS` extracted** to `src/lib/coingecko.ts` (with a new
+  `hasAutoFetch()` helper) instead of living only inside
+  `/api/refresh-crypto-prices/route.ts` — the Prices page needed the
+  same mapping to know which assets to exclude, and the ask was
+  explicit about not hardcoding it a second time. The route now imports
+  from the shared file; behavior there is unchanged.
+- **CSV paste kept, not removed** — moved to its own "Paste CSV" tab,
+  unchanged in behavior (still one `symbol,price` line per asset,
+  matched by symbol text). Both tabs feed the same preview → old
+  price/new price/% diff table and the same `DIFF_WARNING_PCT` warning
+  and confirm/save flow as before — only how the entries get built
+  differs between the two tabs.
+- Saved rows from the list-picker path are tagged `source: 'manual'`
+  (vs. `'csv'` for pasted rows) in the `prices` table, to distinguish
+  the two after the fact.
+- Switching tabs clears any in-progress preview from the other mode,
+  so a stale preview from CSV mode can't be confirmed while looking at
+  the list-picker tab or vice versa.
+- Fixed a real (if minor) bug found while screenshotting the new page
+  header text: a literal space between `</code>` and the following word
+  in a multi-line JSX fragment got silently dropped by JSX's whitespace
+  collapsing, rendering "price</code>lines" with no space. Fixed with
+  an explicit `{" "}`, the same technique this file's description text
+  already used elsewhere for the same reason.
+- Verified live with Playwright against the dev server (read-only —
+  every check stopped at "Preview," never clicked "Confirm & save,"
+  so nothing was written to the live `prices` table): confirmed
+  BTC/ETH are absent from the picker's option list; confirmed picking
+  an asset in row 1 removes it from row 2's options; confirmed the
+  preview table and >30%-diff warning render correctly for a
+  deliberately unrealistic price; confirmed the CSV tab still works
+  unchanged; confirmed switching tabs clears the other tab's leftover
+  preview; confirmed the header-text spacing fix.
+- Design decisions worth logging in DECISIONS.md (not yet saved): (1)
+  excluding auto-fetched assets from the picker entirely rather than
+  allowing a manual override there too; (2) excluding already-picked
+  assets from other rows' dropdowns in the same batch; (3) keeping
+  CSV paste as a permanent second tab rather than removing it; (4)
+  tagging list-picker saves as `source: 'manual'` vs. `'csv'` for
+  pasted rows; (5) preferring exact `assetId` matching over symbol-text
+  matching when an id is already known (list-picker path), leaving
+  CSV-paste's existing symbol-text matching untouched.

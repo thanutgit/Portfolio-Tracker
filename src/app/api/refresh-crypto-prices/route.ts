@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { COINGECKO_IDS, hasAutoFetch } from "@/lib/coingecko";
 
 export const dynamic = "force-dynamic";
-
-// Symbol -> CoinGecko coin id. Only symbols listed here can be auto-refreshed;
-// any other `asset_type = 'crypto'` asset is reported back as "skipped".
-const COINGECKO_IDS: Record<string, string> = {
-  BTC: "bitcoin",
-  ETH: "ethereum",
-};
 
 interface SkipReason {
   symbol: string;
@@ -30,7 +24,7 @@ export async function POST() {
 
   const skipped: SkipReason[] = [];
   const priceable = assets.filter((a) => {
-    if (COINGECKO_IDS[a.symbol.toUpperCase()]) return true;
+    if (hasAutoFetch(a.symbol)) return true;
     skipped.push({ symbol: a.symbol, reason: "No CoinGecko mapping for this symbol" });
     return false;
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatMoney, formatPercent } from "@/lib/format";
 import { DIFF_WARNING_PCT } from "@/lib/constants";
@@ -8,10 +8,12 @@ import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader } from "@/components/PageHeader";
 import { CONTAINER_CLASS } from "@/lib/layout";
+import { hasAutoFetch } from "@/lib/coingecko";
 
 interface AssetLite {
   id: string;
   symbol: string;
+  name: string;
   currency: string;
 }
 
@@ -24,6 +26,22 @@ interface ParsedRow {
   oldPrice: number | null;
   diffPct: number | null;
   status: "ok" | "not_found" | "invalid_price";
+}
+
+interface PriceEntry {
+  symbol: string;
+  priceText: string;
+  assetId?: string;
+}
+
+interface EntryRow {
+  id: string;
+  assetId: string | null;
+  priceText: string;
+}
+
+function newEntryRow(): EntryRow {
+  return { id: crypto.randomUUID(), assetId: null, priceText: "" };
 }
 
 function splitLine(line: string, delimiter: string) {
@@ -53,10 +71,105 @@ function parseInput(raw: string): { symbol: string; priceText: string }[] {
   return rows;
 }
 
+const COMBOBOX_INPUT_CLASS =
+  "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950";
+
+// Same search-then-pick pattern as TransactionModal's asset combobox, minus
+// the "add new asset" affordance — Prices only sets prices for assets that
+// already exist.
+function AssetRowCombobox({
+  options,
+  selected,
+  onSelect,
+  onClear,
+}: {
+  options: AssetLite[];
+  selected: AssetLite | null;
+  onSelect: (asset: AssetLite) => void;
+  onClear: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options.slice(0, 8);
+    return options
+      .filter((a) => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [options, query]);
+
+  if (selected) {
+    return (
+      <div className="flex items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950">
+        <span>
+          <span className="font-medium">{selected.symbol}</span>{" "}
+          <span className="text-gray-500 dark:text-gray-400">{selected.name}</span>
+        </span>
+        <button
+          type="button"
+          onClick={onClear}
+          className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+        >
+          Change
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Search by symbol or name…"
+        className={COMBOBOX_INPUT_CLASS}
+      />
+      {open && (
+        <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+          <ul className="max-h-40 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <li className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                No matching assets
+              </li>
+            ) : (
+              filtered.map((a) => (
+                <li key={a.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelect(a);
+                      setQuery("");
+                      setOpen(false);
+                    }}
+                    className="block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    <span className="font-medium">{a.symbol}</span>{" "}
+                    <span className="text-gray-500 dark:text-gray-400">{a.name}</span>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type Mode = "select" | "paste";
+
 export default function PricesPage() {
+  const [mode, setMode] = useState<Mode>("select");
   const [assets, setAssets] = useState<AssetLite[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(true);
+
+  const [entryRows, setEntryRows] = useState<EntryRow[]>([newEntryRow()]);
   const [rawText, setRawText] = useState("");
+
   const [parsedRows, setParsedRows] = useState<ParsedRow[] | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -72,7 +185,7 @@ export default function PricesPage() {
   useEffect(() => {
     (async () => {
       setLoadingAssets(true);
-      const { data, error } = await supabase.from("assets").select("id, symbol, currency");
+      const { data, error } = await supabase.from("assets").select("id, symbol, name, currency");
       if (error) {
         setError(error.message);
       } else {
@@ -82,22 +195,51 @@ export default function PricesPage() {
     })();
   }, []);
 
-  async function handlePreview() {
+  function switchMode(next: Mode) {
+    setMode(next);
+    setParsedRows(null);
+    setError(null);
+    setSaveMessage(null);
+  }
+
+  // Assets with their own auto-refresh (currently BTC/ETH via CoinGecko —
+  // see src/lib/coingecko.ts) are left out of the picker entirely, since a
+  // manual price here would just be redundant with the automated one.
+  const selectableAssets = useMemo(() => assets.filter((a) => !hasAutoFetch(a.symbol)), [assets]);
+
+  function optionsForRow(rowId: string) {
+    const takenElsewhere = new Set(
+      entryRows.filter((r) => r.id !== rowId && r.assetId).map((r) => r.assetId as string)
+    );
+    return selectableAssets.filter((a) => !takenElsewhere.has(a.id));
+  }
+
+  function updateRow(id: string, patch: Partial<EntryRow>) {
+    setEntryRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+  function addRow() {
+    setEntryRows((prev) => [...prev, newEntryRow()]);
+  }
+  function removeRow(id: string) {
+    setEntryRows((prev) => (prev.length === 1 ? prev : prev.filter((r) => r.id !== id)));
+  }
+
+  async function runPreview(entries: PriceEntry[], emptyMessage: string) {
     setError(null);
     setSaveMessage(null);
     setParsedRows(null);
 
-    const entries = parseInput(rawText);
     if (entries.length === 0) {
-      setError("Paste at least one \"symbol,price\" line first.");
+      setError(emptyMessage);
       return;
     }
 
     setPreviewing(true);
 
     const bySymbol = new Map(assets.map((a) => [a.symbol.toUpperCase(), a]));
+    const byId = new Map(assets.map((a) => [a.id, a]));
     const matchedAssetIds = entries
-      .map((e) => bySymbol.get(e.symbol.toUpperCase())?.id)
+      .map((e) => (e.assetId ? byId.get(e.assetId)?.id : bySymbol.get(e.symbol.toUpperCase())?.id))
       .filter((id): id is string => Boolean(id));
 
     let oldPriceByAssetId = new Map<string, number>();
@@ -115,7 +257,11 @@ export default function PricesPage() {
     }
 
     const rows: ParsedRow[] = entries.map((e) => {
-      const asset = bySymbol.get(e.symbol.toUpperCase());
+      // Prefer the exact asset id (known for real when picked from the
+      // dropdown) over a symbol-text match, which could in principle match
+      // the wrong asset if two assets happen to share a symbol on different
+      // markets.
+      const asset = e.assetId ? byId.get(e.assetId) : bySymbol.get(e.symbol.toUpperCase());
       const parsedPrice = e.priceText === "" ? NaN : Number(e.priceText);
 
       if (!asset) {
@@ -148,7 +294,7 @@ export default function PricesPage() {
 
       const diffPct = oldPrice && oldPrice !== 0 ? ((parsedPrice - oldPrice) / oldPrice) * 100 : null;
       return {
-        rawSymbol: e.symbol,
+        rawSymbol: asset.symbol,
         priceText: e.priceText,
         price: parsedPrice,
         assetId: asset.id,
@@ -161,6 +307,20 @@ export default function PricesPage() {
 
     setParsedRows(rows);
     setPreviewing(false);
+  }
+
+  function handlePreviewPaste() {
+    runPreview(parseInput(rawText), 'Paste at least one "symbol,price" line first.');
+  }
+
+  function handlePreviewSelect() {
+    const entries: PriceEntry[] = entryRows
+      .filter((r) => r.assetId && r.priceText.trim() !== "")
+      .map((r) => {
+        const asset = assets.find((a) => a.id === r.assetId)!;
+        return { symbol: asset.symbol, priceText: r.priceText, assetId: asset.id };
+      });
+    runPreview(entries, "Pick an asset and enter a price for at least one row first.");
   }
 
   async function handleConfirm() {
@@ -187,7 +347,7 @@ export default function PricesPage() {
     const payload = okRows.map((r) => ({
       asset_id: r.assetId,
       price: r.price,
-      source: "csv",
+      source: mode === "select" ? "manual" : "csv",
     }));
     const { error } = await supabase.from("prices").insert(payload);
     if (error) {
@@ -196,7 +356,11 @@ export default function PricesPage() {
       return;
     }
     setSaveMessage(`Saved ${okRows.length} price${okRows.length === 1 ? "" : "s"}.`);
-    setRawText("");
+    if (mode === "paste") {
+      setRawText("");
+    } else {
+      setEntryRows([newEntryRow()]);
+    }
     setParsedRows(null);
     setSaving(false);
   }
@@ -205,6 +369,18 @@ export default function PricesPage() {
   const invalidRows = parsedRows?.filter((r) => r.status === "invalid_price") ?? [];
   const okRows = parsedRows?.filter((r) => r.status === "ok") ?? [];
 
+  const hasCompleteSelectRow = entryRows.some(
+    (r) => r.assetId && r.priceText.trim() !== ""
+  );
+
+  function tabButtonClass(active: boolean) {
+    return `cursor-pointer rounded-full px-3 py-1.5 text-sm font-medium transition-all duration-150 ${
+      active
+        ? "bg-blue-500/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400"
+        : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+    }`;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className={`${CONTAINER_CLASS} py-10`}>
@@ -212,9 +388,10 @@ export default function PricesPage() {
           title="Prices"
           description={
             <>
-              Paste prices for assets without a price API (e.g. Thai funds) — one{" "}
-              <code>symbol,price</code> pair per line. Crypto has its own auto-refresh and
-              doesn&apos;t need this.
+              Set prices for assets without a price API (e.g. Thai funds) — pick from the list,
+              or paste <code>symbol,price</code>{" "}
+              lines for quick bulk entry. Crypto has its own auto-refresh and doesn&apos;t need
+              this.
             </>
           }
         />
@@ -230,35 +407,120 @@ export default function PricesPage() {
           </div>
         )}
 
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <label
-            htmlFor="price-paste"
-            className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+        <div className="mb-4 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => switchMode("select")}
+            className={tabButtonClass(mode === "select")}
           >
-            Paste CSV or tab-separated (symbol, price)
-          </label>
-          <textarea
-            id="price-paste"
-            value={rawText}
-            onChange={(e) => setRawText(e.target.value)}
-            rows={8}
-            placeholder={"SCBS&P500E,43.56\nSCBGOLDE,22.77\nSCBCHAE,11.14"}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm tabular-nums focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950"
-          />
-          <div className="mt-3 flex items-center gap-3">
-            <button
-              onClick={handlePreview}
-              disabled={loadingAssets || previewing || rawText.trim() === ""}
-              className="cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-gray-50 hover:shadow-md active:translate-y-0 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              {previewing ? "Parsing…" : "Preview"}
-            </button>
-            {loadingAssets && (
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                Loading assets…
-              </span>
-            )}
-          </div>
+            Select from list
+          </button>
+          <button
+            type="button"
+            onClick={() => switchMode("paste")}
+            className={tabButtonClass(mode === "paste")}
+          >
+            Paste CSV
+          </button>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          {mode === "select" ? (
+            <>
+              <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                Pick an asset and enter its price — add more rows for several at once.
+              </p>
+              <div className="space-y-3">
+                {entryRows.map((row) => {
+                  const selected = row.assetId
+                    ? assets.find((a) => a.id === row.assetId) ?? null
+                    : null;
+                  return (
+                    <div key={row.id} className="flex items-start gap-3">
+                      <div className="flex-1">
+                        <AssetRowCombobox
+                          options={optionsForRow(row.id)}
+                          selected={selected}
+                          onSelect={(a) => updateRow(row.id, { assetId: a.id })}
+                          onClear={() => updateRow(row.id, { assetId: null })}
+                        />
+                      </div>
+                      <div className="w-36">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={row.priceText}
+                          onChange={(e) => updateRow(row.id, { priceText: e.target.value })}
+                          placeholder="Price"
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-mono tabular-nums focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950"
+                        />
+                      </div>
+                      {entryRows.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeRow(row.id)}
+                          aria-label="Remove row"
+                          className="inline-flex h-9 w-9 flex-shrink-0 cursor-pointer items-center justify-center rounded-full text-gray-400 transition-all duration-150 hover:bg-red-50 hover:text-red-600 dark:text-gray-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={addRow}
+                className="mt-3 cursor-pointer text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+              >
+                + Add another asset
+              </button>
+
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  onClick={handlePreviewSelect}
+                  disabled={loadingAssets || previewing || !hasCompleteSelectRow}
+                  className="cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-gray-50 hover:shadow-md active:translate-y-0 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  {previewing ? "Checking…" : "Preview"}
+                </button>
+                {loadingAssets && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Loading assets…</span>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <label
+                htmlFor="price-paste"
+                className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                Paste CSV or tab-separated (symbol, price)
+              </label>
+              <textarea
+                id="price-paste"
+                value={rawText}
+                onChange={(e) => setRawText(e.target.value)}
+                rows={8}
+                placeholder={"SCBS&P500E,43.56\nSCBGOLDE,22.77\nSCBCHAE,11.14"}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm tabular-nums focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950"
+              />
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  onClick={handlePreviewPaste}
+                  disabled={loadingAssets || previewing || rawText.trim() === ""}
+                  className="cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-gray-50 hover:shadow-md active:translate-y-0 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  {previewing ? "Parsing…" : "Preview"}
+                </button>
+                {loadingAssets && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Loading assets…</span>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {parsedRows && (
