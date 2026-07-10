@@ -72,9 +72,17 @@ export default function SignupPage() {
       <main className={`${CONTAINER_CLASS} flex justify-center py-16`}>
         <AuthCard title="Sign up" description="Create an account to get started." error={error}>
           {confirmMessage ? (
-            <p className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
-              {confirmMessage}
-            </p>
+            <>
+              <p className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
+                {confirmMessage}
+              </p>
+              <Link
+                href="/login"
+                className="mt-4 inline-block cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-gray-50 hover:shadow-md active:translate-y-0 active:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                Go to login
+              </Link>
+            </>
           ) : (
             <>
               <form onSubmit={handleSubmit} className="mt-4 space-y-3">
