@@ -89,9 +89,16 @@ guards against duplicate inserts).
   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
 - SECRET key bypasses RLS — server-only, never in a client bundle, never in git.
 - Secrets live in `.env.local` (gitignored). No key values in committed docs.
-- RLS is still OFF (Phase 7 step 1 only added login/signup — see below and
-  ROADMAP.md). Enable it once existing data has real owners: policy
-  `auth.uid() = portfolios.user_id`.
+- **Supabase Auth (email/password) is live** — every page except
+  `/login`/`/signup` is protected by the `<RequireAuth>` component (see
+  "Route protection" below); logged-out visitors are redirected to
+  `/login`.
+- **RLS is ON** (Phase 7 step 2, applied): `portfolios` and
+  `user_settings` check `auth.uid() = user_id` directly;
+  `transactions`, `targets`, and `portfolio_snapshots` check indirectly
+  via a subquery to `portfolios.user_id` (none of the three has its own
+  `user_id` column). `assets` and `prices` intentionally have RLS OFF —
+  shared across all users. Full policy SQL: `migrations/0007`–`0010`.
 
 ## Auth (Phase 7)
 Supabase Auth built-in, email/password only (no OAuth yet). Client-side only
@@ -143,29 +150,28 @@ fires — acceptable since RLS (below) blocks the underlying data at the same
 time regardless, so nothing real is ever exposed during that gap; the guard
 is just about not showing a broken/empty-looking page instead of bouncing.
 
-**This makes every page require a real login as soon as this code ships** —
-independent of whether the RLS migrations below have been applied yet, since
-the redirect only checks "is there a session," not "does RLS allow this
-data." Log in via `/login` with a real account to use the app at all from
-this point on, in dev or anywhere else.
+Log in via `/login` with a real account to use the app at all — every page
+now requires a session.
 
-## Backfilling existing data to a real owner + enabling RLS (Phase 7 step 2)
+## Backfilling existing data to a real owner + enabling RLS (Phase 7 step 2, applied)
 Three migrations, deliberately kept separate (see each file and
-DECISIONS.md):
-- `migrations/0008_backfill_owner_user_id.sql` — **not yet applied.** Data-
-  only: assigns every existing `portfolios`/`user_settings` row (currently
-  `user_id is null`) to the one real `auth.users` account. Includes a safety
-  check that fails loudly if `auth.users` doesn't have exactly one row,
-  rather than silently mis-assigning data to the wrong owner, plus a
-  commented-out manual alternative (hardcode the UUID from Supabase
-  Dashboard → Authentication → Users) for when that assumption doesn't hold.
-- `migrations/0009_portfolios_user_id_not_null.sql` — **not yet applied.**
-  Makes `portfolios.user_id not null`. Kept in its own file (not combined
-  with 0008) so a failed/incomplete backfill fails loudly here instead of
-  compounding with the data migration. `user_settings.user_id` deliberately
-  stays nullable — only `portfolios.user_id` was asked to become `not null`
-  this round.
-- `migrations/0010_enable_rls.sql` — **not yet applied.** Enables RLS on
+DECISIONS.md), all now applied against the live database and confirmed
+(logging in with the real account showed every portfolio's full data intact
+— holdings, transactions, targets, snapshots — nothing missing):
+- `migrations/0008_backfill_owner_user_id.sql` — data-only: assigned every
+  existing `portfolios`/`user_settings` row (previously `user_id is null`)
+  to the one real `auth.users` account. Included a safety check that would
+  have failed loudly if `auth.users` didn't have exactly one row, rather
+  than silently mis-assigning data to the wrong owner, plus a commented-out
+  manual alternative (hardcode the UUID from Supabase Dashboard →
+  Authentication → Users) for when that assumption doesn't hold.
+- `migrations/0009_portfolios_user_id_not_null.sql` — made
+  `portfolios.user_id not null`. Kept in its own file (not combined with
+  0008) so a failed/incomplete backfill would have failed loudly here
+  instead of compounding with the data migration. `user_settings.user_id`
+  deliberately stays nullable — only `portfolios.user_id` was asked to
+  become `not null` this round.
+- `migrations/0010_enable_rls.sql` — enables RLS on
   `portfolios`/`user_settings` (direct `auth.uid() = user_id` check) and
   `transactions`/`targets`/`portfolio_snapshots` (indirect check via a
   scalar subquery to `portfolios.user_id`, since none of those three tables
@@ -180,10 +186,9 @@ DECISIONS.md):
   Existing `select`/`update` calls needed no changes — RLS filters
   transparently at the database layer; the app never needed to add its own
   `.eq("user_id", ...)` filters.
-- **None of 0008/0009/0010 have been run against the live database** —
-  per an explicit instruction, they're prepared and reviewed here first;
-  applying them (and verifying the existing account still sees all its
-  data afterward) is a deliberately separate, user-confirmed step.
+- **0008/0009/0010 have all been applied to the live database and
+  verified** — logging in with the real account confirmed every
+  portfolio's full data is still visible after RLS.
 
 ## Database migrations
 Every schema change = an ordered file under `migrations/` (`0001_init.sql`,

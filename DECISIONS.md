@@ -372,3 +372,20 @@ Keeps each row's price source distinguishable for later review.
 ## D83 — When the asset id is already known (list-picker), match by id directly instead of symbol text like the CSV path
 Slightly more accurate. The CSV path has no id available up front, so
 it still has to match by symbol text.
+
+## D84 — Client-side `<RequireAuth>` component instead of Next.js middleware
+Avoids a bigger architecture change (cookie-based session, a new
+dependency) that wasn't asked for this round.
+
+## D85 — 0008 checks that `auth.users` has exactly one row before auto-backfilling, with a manual UUID option as fallback
+Safe when there's genuinely only one user, but won't silently
+mis-assign data to the wrong owner if more than one account turns out
+to exist.
+
+## D86 — 0008/0009/0010 kept as three separate files, not combined
+If one step fails, the error is clear and isolated instead of tangled
+up with the others, making the cause harder to find.
+
+## D87 — `user_settings.user_id` stays nullable while `portfolios.user_id` becomes not null
+Deliberately asymmetric — matches exactly what was asked, not extended
+any further.

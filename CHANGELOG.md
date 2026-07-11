@@ -1821,3 +1821,17 @@
   approach vs. a hardcoded UUID; keeping 0008/0009/0010 as three
   separate files; leaving `user_settings.user_id` nullable while
   `portfolios.user_id` becomes `not null`).
+
+## 2026-07-11 — Phase 7 step 2 confirmed complete: migrations 0008–0010 applied, RLS verified
+- Migrations 0008 (backfill), 0009 (`portfolios.user_id not null`), and
+  0010 (enable RLS) have now been applied to the live database and
+  confirmed: logging in with the real account shows every portfolio's
+  full data (holdings, transactions, targets, snapshots) intact — RLS
+  isn't hiding anything that should be visible.
+  ARCHITECTURE.md's "Supabase & security" section corrected — it still
+  said "RLS is OFF now... enable it when auth is added," which was no
+  longer true. Updated it plus the "Route protection" and "Backfilling
+  existing data..." sections (both still said "not yet applied"),
+  `migrations/README.md`, and `ROADMAP.md`'s Phase 7 (now marked done)
+  for consistency, since leaving them contradicting each other would
+  have been stale documentation, not just an unrelated line.

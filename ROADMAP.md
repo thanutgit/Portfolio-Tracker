@@ -40,28 +40,37 @@ _(original requirement #4)_
 On hold — paused, not dropped. Revisit once there's clearer scope for
 what the LLM feature should actually do.
 
-## Phase 7 — Auth & Row Level Security (step 2 in progress — migrations not yet applied)
-Turn on for real once you want to share the URL with someone else, or
-start worrying about data security — right now anyone with the URL +
-publishable key can read/write everything (see GOTCHAS.md #2). This
-stops being true only once 0008/0009/0010 below are actually applied.
+## Phase 7 — Auth & Row Level Security (done)
+Turned on for real — RLS is on, so it's no longer true that anyone with
+the URL + publishable key can read/write everything (see GOTCHAS.md #2,
+now historical).
 
 - **Step 1 (done)**: login/signup UI (Supabase Auth, email/password —
   `/login`, `/signup`, logout in the nav bar) + schema prep
-  (`migrations/0007_add_auth_user_id.sql`, not yet applied to the live
-  database — see DECISIONS.md). No OAuth yet.
-- **Step 2 (code done, migrations prepared but NOT applied)**: route
-  protection (`<RequireAuth>` on every page except `/login`/`/signup`,
-  `useRedirectIfAuthed()` on those two — see ARCHITECTURE.md) is live in
-  code as of this round. The data/RLS side —
-  `migrations/0008_backfill_owner_user_id.sql` (assign existing rows to
-  the one real account), `0009_portfolios_user_id_not_null.sql`, and
+  (`migrations/0007_add_auth_user_id.sql`, applied). No OAuth yet.
+- **Step 2 (done)**: route protection (`<RequireAuth>` on every page
+  except `/login`/`/signup`, `useRedirectIfAuthed()` on those two — see
+  ARCHITECTURE.md) is live in code. The data/RLS side —
+  `migrations/0008_backfill_owner_user_id.sql` (assigned existing rows
+  to the one real account), `0009_portfolios_user_id_not_null.sql`, and
   `0010_enable_rls.sql` (RLS on `portfolios`/`user_settings`/
   `transactions`/`targets`/`portfolio_snapshots`; `assets`/`prices` stay
-  open) — is written and reviewed but **deliberately not yet run against
-  the live database**. Next: apply 0008 → 0009 → 0010 in order, then
-  confirm logging in with the real account still shows every portfolio's
-  full data (holdings, transactions, targets, snapshots) before treating
-  this step as complete.
-- Still to decide: genuinely multi-user, or still single-user but gated
-  behind a login so randoms with the URL can't get in.
+  open) — all applied and verified: logging in with the real account
+  shows every portfolio's full data (holdings, transactions, targets,
+  snapshots) intact.
+- **Genuinely multi-user already works** — RLS scopes every
+  user-owned table to `auth.uid()`, so a second real signup would get
+  their own isolated portfolios/transactions/etc. today, not just a
+  gate in front of one shared dataset. What's left is optional
+  polish, not a blocking decision:
+  - No OAuth (Google, etc.) — email/password only.
+  - No complete email-confirmation UX — `/signup` shows a "check your
+    email" message if the Supabase project requires confirmation, but
+    there's no resend-confirmation link, no dedicated
+    "confirmed!"/error landing page for the confirmation link itself,
+    and no handling for an expired confirmation link.
+  - No password reset / "forgot password" flow.
+  - No account settings (change email, change password, delete
+    account).
+  - `assets`/`prices` stay shared across all users by design (not
+    per-user) — revisit only if that assumption ever needs to change.
