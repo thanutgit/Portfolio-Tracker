@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { usePortfolios } from "@/lib/hooks/usePortfolios";
 import { PortfolioLabel } from "@/components/PortfolioLabel";
 import { PageHeader } from "@/components/PageHeader";
+import { RequireAuth } from "@/components/RequireAuth";
 import { EmptyState } from "@/components/EmptyState";
 import { CONTAINER_CLASS } from "@/lib/layout";
 
@@ -24,9 +25,11 @@ interface TargetRecord {
 
 export default function TargetsPage() {
   return (
-    <Suspense fallback={null}>
-      <TargetsPageContent />
-    </Suspense>
+    <RequireAuth>
+      <Suspense fallback={null}>
+        <TargetsPageContent />
+      </Suspense>
+    </RequireAuth>
   );
 }
 

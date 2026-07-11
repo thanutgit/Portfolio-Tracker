@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
+import { RequireAuth } from "@/components/RequireAuth";
 import { EditAssetModal } from "@/components/EditAssetModal";
 import { Toast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -116,6 +117,7 @@ export default function AssetsPage() {
   }
 
   return (
+    <RequireAuth>
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className={`${CONTAINER_CLASS} py-10`}>
         <PageHeader
@@ -212,5 +214,6 @@ export default function AssetsPage() {
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
       <ConfirmDialog state={confirmState} onConfirm={handleConfirm} onCancel={handleCancel} />
     </div>
+    </RequireAuth>
   );
 }

@@ -40,26 +40,28 @@ _(original requirement #4)_
 On hold — paused, not dropped. Revisit once there's clearer scope for
 what the LLM feature should actually do.
 
-## Phase 7 — Auth & Row Level Security (step 1 done, in progress)
+## Phase 7 — Auth & Row Level Security (step 2 in progress — migrations not yet applied)
 Turn on for real once you want to share the URL with someone else, or
 start worrying about data security — right now anyone with the URL +
-publishable key can read/write everything (see GOTCHAS.md #2).
+publishable key can read/write everything (see GOTCHAS.md #2). This
+stops being true only once 0008/0009/0010 below are actually applied.
 
 - **Step 1 (done)**: login/signup UI (Supabase Auth, email/password —
   `/login`, `/signup`, logout in the nav bar) + schema prep
   (`migrations/0007_add_auth_user_id.sql`, not yet applied to the live
-  database — see DECISIONS.md). No OAuth yet. **No route protection or
-  redirect** — every page still works fully logged-out, unchanged from
-  before. RLS still off.
-- **Step 2 (not started)**: enable the RLS policy
-  `auth.uid() = portfolios.user_id` (scaffold noted in ARCHITECTURE.md),
-  and the equivalent for `user_settings`.
-- **Step 3 (not started)**: migrate existing data (current seed data,
-  and anything added under single-user dev) to a real `user_id`, then
-  make `portfolios.user_id` / `user_settings.user_id` `not null`.
-- **Step 4 (not started)**: add route protection (redirect logged-out
-  users away from portfolio-scoped pages) — deliberately deferred until
-  after step 3, so protection doesn't lock out access to real data
-  before it has a real owner assigned.
+  database — see DECISIONS.md). No OAuth yet.
+- **Step 2 (code done, migrations prepared but NOT applied)**: route
+  protection (`<RequireAuth>` on every page except `/login`/`/signup`,
+  `useRedirectIfAuthed()` on those two — see ARCHITECTURE.md) is live in
+  code as of this round. The data/RLS side —
+  `migrations/0008_backfill_owner_user_id.sql` (assign existing rows to
+  the one real account), `0009_portfolios_user_id_not_null.sql`, and
+  `0010_enable_rls.sql` (RLS on `portfolios`/`user_settings`/
+  `transactions`/`targets`/`portfolio_snapshots`; `assets`/`prices` stay
+  open) — is written and reviewed but **deliberately not yet run against
+  the live database**. Next: apply 0008 → 0009 → 0010 in order, then
+  confirm logging in with the real account still shows every portfolio's
+  full data (holdings, transactions, targets, snapshots) before treating
+  this step as complete.
 - Still to decide: genuinely multi-user, or still single-user but gated
   behind a login so randoms with the URL can't get in.

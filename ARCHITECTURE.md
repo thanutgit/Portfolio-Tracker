@@ -93,10 +93,10 @@ guards against duplicate inserts).
   ROADMAP.md). Enable it once existing data has real owners: policy
   `auth.uid() = portfolios.user_id`.
 
-## Auth (Phase 7, step 1 — login/signup only, not enforced yet)
+## Auth (Phase 7)
 Supabase Auth built-in, email/password only (no OAuth yet). Client-side only
 via the existing publishable-key `supabase` client (`src/lib/supabase.ts`) —
-no server middleware or route protection in this step.
+no server middleware; see "Route protection" below for why.
 - `/login` (`src/app/login/page.tsx`) — `supabase.auth.signInWithPassword()`.
 - `/signup` (`src/app/signup/page.tsx`) — `supabase.auth.signUp()`. If the
   Supabase project requires email confirmation (this project does), `signUp()`
@@ -119,17 +119,71 @@ no server middleware or route protection in this step.
   `/`) when signed in or a "Log in" link when signed out. Portfolio tabs are
   hidden on `/login`/`/signup`, same reasoning as Overview (no
   portfolio/user context there yet).
-- **No route protection or redirect yet** — every page still works fully
-  logged-out, identical to before this change. That, plus enabling RLS and
-  migrating existing data to real `user_id` owners, is deliberately deferred
-  to a later, separate step (see ROADMAP.md Phase 7) since it's riskier and
-  shouldn't ship in the same round as the login UI itself.
-- Schema prep for this step lives in `migrations/0007_add_auth_user_id.sql`
-  (not yet applied — see the file and DECISIONS.md): adds the
-  `portfolios.user_id → auth.users` foreign key (the column itself already
-  existed, unreferenced, since `0001_init.sql`), and adds a nullable, unique
-  `user_settings.user_id` so settings can eventually move off its current
-  single-row convention. Both stay nullable until the data-migration step.
+- Schema prep from step 1 lives in `migrations/0007_add_auth_user_id.sql`:
+  adds the `portfolios.user_id → auth.users` foreign key (the column itself
+  already existed, unreferenced, since `0001_init.sql`), and a nullable,
+  unique `user_settings.user_id`.
+
+## Route protection (Phase 7 step 2)
+Client-side only, via a shared `<RequireAuth>` wrapper
+(`src/components/RequireAuth.tsx`) — no Next.js middleware, which would need
+a cookie-based session (`@supabase/ssr`) instead of this app's existing
+localStorage-based client session, a bigger architecture change than asked
+for here (see DECISIONS.md). Every page except `/login`/`/signup` wraps its
+return value in `<RequireAuth>` (Overview, Holdings, Targets, Rebalancing,
+Prices, Assets, Settings) — it tracks the session the same way `NavBar`
+already does (`getSession()` + `onAuthStateChange()`), renders nothing while
+checking or once a logged-out visitor has been bounced, and `router.replace()`s
+to `/login` if there's no session. The inverse — `useRedirectIfAuthed()`
+(`src/lib/hooks/useRedirectIfAuthed.ts`) — sends an already-logged-in visitor
+away from `/login`/`/signup` to `/`.
+
+Because this is client-side, there's a brief blank render before the redirect
+fires — acceptable since RLS (below) blocks the underlying data at the same
+time regardless, so nothing real is ever exposed during that gap; the guard
+is just about not showing a broken/empty-looking page instead of bouncing.
+
+**This makes every page require a real login as soon as this code ships** —
+independent of whether the RLS migrations below have been applied yet, since
+the redirect only checks "is there a session," not "does RLS allow this
+data." Log in via `/login` with a real account to use the app at all from
+this point on, in dev or anywhere else.
+
+## Backfilling existing data to a real owner + enabling RLS (Phase 7 step 2)
+Three migrations, deliberately kept separate (see each file and
+DECISIONS.md):
+- `migrations/0008_backfill_owner_user_id.sql` — **not yet applied.** Data-
+  only: assigns every existing `portfolios`/`user_settings` row (currently
+  `user_id is null`) to the one real `auth.users` account. Includes a safety
+  check that fails loudly if `auth.users` doesn't have exactly one row,
+  rather than silently mis-assigning data to the wrong owner, plus a
+  commented-out manual alternative (hardcode the UUID from Supabase
+  Dashboard → Authentication → Users) for when that assumption doesn't hold.
+- `migrations/0009_portfolios_user_id_not_null.sql` — **not yet applied.**
+  Makes `portfolios.user_id not null`. Kept in its own file (not combined
+  with 0008) so a failed/incomplete backfill fails loudly here instead of
+  compounding with the data migration. `user_settings.user_id` deliberately
+  stays nullable — only `portfolios.user_id` was asked to become `not null`
+  this round.
+- `migrations/0010_enable_rls.sql` — **not yet applied.** Enables RLS on
+  `portfolios`/`user_settings` (direct `auth.uid() = user_id` check) and
+  `transactions`/`targets`/`portfolio_snapshots` (indirect check via a
+  scalar subquery to `portfolios.user_id`, since none of those three tables
+  has its own `user_id` column). `assets`/`prices` intentionally excluded —
+  shared across all users, unchanged from the Phase 7 step 1 plan.
+- Two existing insert call sites needed a matching code fix so they keep
+  working once `portfolios.user_id` is `not null` and RLS is on — otherwise
+  either would either violate the not-null constraint or insert an
+  invisible-under-RLS row: `NewPortfolioModal` now sets `user_id` from the
+  current session on insert, and the Settings page's insert-a-fresh-row
+  fallback (the "no existing `user_settings` row yet" case) does the same.
+  Existing `select`/`update` calls needed no changes — RLS filters
+  transparently at the database layer; the app never needed to add its own
+  `.eq("user_id", ...)` filters.
+- **None of 0008/0009/0010 have been run against the live database** —
+  per an explicit instruction, they're prepared and reviewed here first;
+  applying them (and verifying the existing account still sees all its
+  data afterward) is a deliberately separate, user-confirmed step.
 
 ## Database migrations
 Every schema change = an ordered file under `migrations/` (`0001_init.sql`,

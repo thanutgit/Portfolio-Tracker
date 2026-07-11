@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { Toast } from "@/components/Toast";
 import { PageHeader } from "@/components/PageHeader";
+import { RequireAuth } from "@/components/RequireAuth";
 
 export default function SettingsPage() {
   const [rowId, setRowId] = useState<string | null>(null);
@@ -42,9 +43,23 @@ export default function SettingsPage() {
     setError(null);
 
     const payload = { birth_date: birthDate || null };
-    const { data, error } = rowId
-      ? await supabase.from("user_settings").update(payload).eq("id", rowId).select("id").single()
-      : await supabase.from("user_settings").insert(payload).select("id").single();
+    let result;
+    if (rowId) {
+      result = await supabase.from("user_settings").update(payload).eq("id", rowId).select("id").single();
+    } else {
+      // A fresh row needs user_id set explicitly — once RLS is on (Phase 7
+      // step 2), a row inserted without it would become invisible to
+      // everyone (including the user who just created it), since
+      // `auth.uid() = user_id` can never match a null user_id.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user.id;
+      result = await supabase
+        .from("user_settings")
+        .insert({ ...payload, user_id: userId })
+        .select("id")
+        .single();
+    }
+    const { data, error } = result;
 
     if (error) {
       setError(error.message);
@@ -58,6 +73,7 @@ export default function SettingsPage() {
   }
 
   return (
+    <RequireAuth>
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className={`${CONTAINER_CLASS} py-10`}>
         <PageHeader
@@ -113,5 +129,6 @@ export default function SettingsPage() {
 
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>
+    </RequireAuth>
   );
 }

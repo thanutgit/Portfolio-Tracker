@@ -7,6 +7,7 @@ import { DIFF_WARNING_PCT } from "@/lib/constants";
 import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader } from "@/components/PageHeader";
+import { RequireAuth } from "@/components/RequireAuth";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { hasAutoFetch } from "@/lib/coingecko";
 
@@ -382,6 +383,7 @@ export default function PricesPage() {
   }
 
   return (
+    <RequireAuth>
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className={`${CONTAINER_CLASS} py-10`}>
         <PageHeader
@@ -623,5 +625,6 @@ export default function PricesPage() {
 
       <ConfirmDialog state={confirmState} onConfirm={respondConfirm} onCancel={respondCancel} />
     </div>
+    </RequireAuth>
   );
 }

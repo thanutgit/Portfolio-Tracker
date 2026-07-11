@@ -23,6 +23,9 @@ DECISIONS.md D11).
 | 0005_add_portfolio_snapshots.sql | Phase 4 (snapshots slice): `portfolio_snapshots` table (portfolio_id, snapshot_date, total_value, total_cost, cash_value) — daily portfolio value history for a future growth chart |
 | 0006_add_user_settings.sql | Phase 5 (RMF holding-period slice): `user_settings` table (`id`, `birth_date`, `created_at`) — single-row, no `user_id` yet (no auth — see ROADMAP.md Phase 7); used only to check RMF's age-55 condition |
 | 0007_add_auth_user_id.sql | Phase 7 step 1 (auth prep, NOT applied yet — see DECISIONS.md): adds the `portfolios.user_id → auth.users` foreign key (the column already existed since 0001, unreferenced); adds `user_settings.user_id` (nullable, unique) so settings can eventually be per-user instead of single-row. RLS still off; no data migrated to real owners yet |
+| 0008_backfill_owner_user_id.sql | Phase 7 step 2 (NOT applied yet): backfills `user_id` on existing `portfolios`/`user_settings` rows to the one real auth account, with a safety check that fails loudly if there isn't exactly one `auth.users` row. Data-only — no schema change |
+| 0009_portfolios_user_id_not_null.sql | Phase 7 step 2 (NOT applied yet): makes `portfolios.user_id` `not null`. Deliberately its own file, run only after confirming 0008 backfilled every row |
+| 0010_enable_rls.sql | Phase 7 step 2 (NOT applied yet): enables RLS on `portfolios`/`user_settings` (direct `user_id` check) and `transactions`/`targets`/`portfolio_snapshots` (indirect check via `portfolios.user_id`). `assets`/`prices` intentionally left without RLS — shared across all users |
 
 ## Applying migrations
 Run the file's contents in the Supabase SQL Editor, in order. There's no

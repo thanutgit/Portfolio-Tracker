@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { usePortfolios } from "@/lib/hooks/usePortfolios";
 import { PortfolioLabel } from "@/components/PortfolioLabel";
 import { PageHeader } from "@/components/PageHeader";
+import { RequireAuth } from "@/components/RequireAuth";
 import { EmptyState } from "@/components/EmptyState";
 import type { Holding } from "@/lib/types";
 import { formatMoney, formatPercent, formatQuantity } from "@/lib/format";
@@ -35,9 +36,11 @@ interface RebalanceRow {
 
 export default function RebalancingPage() {
   return (
-    <Suspense fallback={null}>
-      <RebalancingPageContent />
-    </Suspense>
+    <RequireAuth>
+      <Suspense fallback={null}>
+        <RebalancingPageContent />
+      </Suspense>
+    </RequireAuth>
   );
 }
 

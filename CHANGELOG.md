@@ -1741,3 +1741,83 @@
   pasted rows; (5) preferring exact `assetId` matching over symbol-text
   matching when an id is already known (list-picker path), leaving
   CSV-paste's existing symbol-text matching untouched.
+
+## 2026-07-11 — Phase 7 step 2: route protection (live) + backfill/NOT NULL/RLS migrations (prepared, NOT applied)
+- **Route protection is live in code as of this round** — every page
+  except `/login`/`/signup` now requires a real session:
+  - New `<RequireAuth>` (`src/components/RequireAuth.tsx`) wraps
+    Overview, Holdings, Targets, Rebalancing, Prices, Assets, and
+    Settings. Tracks the session the same way `NavBar` already does
+    (`getSession()` + `onAuthStateChange()`); renders nothing while
+    checking or once a logged-out visitor has been bounced;
+    `router.replace()`s to `/login` if there's no session.
+  - New `useRedirectIfAuthed()` (`src/lib/hooks/useRedirectIfAuthed.ts`)
+    does the inverse on `/login`/`/signup` — an already-logged-in
+    visitor gets sent to `/` instead of seeing the form.
+  - Client-side only, no Next.js middleware — that would need a
+    cookie-based session (`@supabase/ssr`) instead of this app's
+    existing localStorage-based client session, a bigger architecture
+    change than asked for. Means a brief blank render before the
+    redirect fires, acceptable since RLS blocks the underlying data at
+    the same time regardless.
+  - **This takes effect immediately, independent of whether the
+    migrations below have been applied** — the redirect only checks
+    "is there a session," not "does RLS allow this data." A real login
+    is now required to use the app at all, including in dev.
+- **Two existing insert call sites patched** so they keep working once
+  `portfolios.user_id` is `not null` and RLS is on (otherwise either
+  would violate the not-null constraint or insert a row invisible to
+  everyone under RLS): `NewPortfolioModal` now sets `user_id` from the
+  current session; the Settings page's insert-a-fresh-row fallback (no
+  existing `user_settings` row yet) does the same. No other insert/
+  update/select call site needed changes — RLS filters transparently
+  at the database layer, so the app never needed its own
+  `.eq("user_id", ...)` filters.
+- **Three new migrations, NOT applied to the live database** (per an
+  explicit instruction — prepared and reviewed here first):
+  - `migrations/0008_backfill_owner_user_id.sql` — assigns every
+    existing `portfolios`/`user_settings` row to the one real
+    `auth.users` account. Includes a safety check that fails loudly if
+    `auth.users` doesn't have exactly one row (rather than silently
+    mis-assigning data to the wrong owner), plus a commented-out manual
+    alternative (hardcode the UUID from Supabase Dashboard →
+    Authentication → Users) for when that assumption doesn't hold.
+  - `migrations/0009_portfolios_user_id_not_null.sql` — makes
+    `portfolios.user_id not null`. Deliberately its own file (not
+    combined with 0008's data update), so an incomplete backfill fails
+    loudly here instead of compounding with the data migration in the
+    same transaction. `user_settings.user_id` deliberately stays
+    nullable — only `portfolios.user_id` was asked to become `not
+    null` this round.
+  - `migrations/0010_enable_rls.sql` — enables RLS on
+    `portfolios`/`user_settings` (direct `auth.uid() = user_id` check)
+    and `transactions`/`targets`/`portfolio_snapshots` (indirect check
+    via a scalar subquery to `portfolios.user_id`, since none of those
+    three tables has its own `user_id` column). `assets`/`prices`
+    intentionally excluded — still shared across all users.
+  - `migrations/README.md` updated with all three entries.
+- Verified live with Playwright (read-only, no DB writes, no migration
+  applied): confirmed all 7 protected pages redirect a logged-out
+  visitor straight to `/login`; confirmed `/login` and `/signup`
+  themselves don't redirect while logged out; screenshotted the
+  `/holdings` → `/login` redirect to confirm no flash of broken/empty
+  content along the way.
+- **Not done this round, and deliberately so per an explicit
+  instruction**: none of 0008/0009/0010 have been run against the live
+  database. The critical remaining check — logging in with the real
+  account and confirming every portfolio's full data (holdings,
+  transactions, targets, snapshots) is still visible after RLS is on —
+  requires actually applying these migrations first, which needs your
+  own confirmation before proceeding.
+- ARCHITECTURE.md updated: reworked the Auth section, added "Route
+  protection" and "Backfilling existing data to a real owner +
+  enabling RLS" sections describing exactly what's live vs. prepared.
+  ROADMAP.md's Phase 7 updated to reflect step 2's actual state (code
+  live, migrations prepared but not applied) instead of the old
+  step-2/3/4 breakdown.
+- Design decisions worth logging in DECISIONS.md (not yet saved): see
+  the response for this round (client-side `<RequireAuth>` instead of
+  Next.js middleware; the `auth.users` safety-check-then-backfill
+  approach vs. a hardcoded UUID; keeping 0008/0009/0010 as three
+  separate files; leaving `user_settings.user_id` nullable while
+  `portfolios.user_id` becomes `not null`).

@@ -24,9 +24,14 @@ export function NewPortfolioModal({ onClose, onCreated }: Props) {
 
     setSaving(true);
     setError(null);
+    // Once RLS is on (Phase 7 step 2), a portfolio inserted without user_id
+    // would violate the not-null constraint (or, if that weren't in place,
+    // become invisible to everyone under RLS) — this page only renders
+    // inside <RequireAuth>, so a session is guaranteed to exist here.
+    const { data: sessionData } = await supabase.auth.getSession();
     const { data, error } = await supabase
       .from("portfolios")
-      .insert({ name: trimmed, base_currency: "THB" })
+      .insert({ name: trimmed, base_currency: "THB", user_id: sessionData.session?.user.id })
       .select("id, name, base_currency")
       .single();
     if (error) {

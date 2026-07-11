@@ -12,6 +12,7 @@ import { CONTAINER_CLASS } from "@/lib/layout";
 import { countDriftedAssets, type DriftHolding, type DriftTarget } from "@/lib/drift";
 import { DriftBadge } from "@/components/DriftBadge";
 import { PageHeader } from "@/components/PageHeader";
+import { RequireAuth } from "@/components/RequireAuth";
 
 function WalletIcon() {
   return (
@@ -168,6 +169,7 @@ export default function OverviewPage() {
   }
 
   return (
+    <RequireAuth>
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className={`${CONTAINER_CLASS} py-10`}>
         <PageHeader
@@ -274,5 +276,6 @@ export default function OverviewPage() {
 
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>
+    </RequireAuth>
   );
 }

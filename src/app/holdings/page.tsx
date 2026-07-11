@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { usePortfolios } from "@/lib/hooks/usePortfolios";
 import { PortfolioLabel } from "@/components/PortfolioLabel";
 import { PageHeader } from "@/components/PageHeader";
+import { RequireAuth } from "@/components/RequireAuth";
 import { SummaryCard } from "@/components/SummaryCard";
 import { EmptyState } from "@/components/EmptyState";
 import { HistoryModal } from "@/components/HistoryModal";
@@ -136,9 +137,11 @@ function InfoIcon() {
 
 export default function HoldingsPage() {
   return (
-    <Suspense fallback={null}>
-      <HoldingsPageContent />
-    </Suspense>
+    <RequireAuth>
+      <Suspense fallback={null}>
+        <HoldingsPageContent />
+      </Suspense>
+    </RequireAuth>
   );
 }
 

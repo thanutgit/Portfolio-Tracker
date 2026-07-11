@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { AuthCard, AUTH_INPUT_CLASS, AUTH_LABEL_CLASS } from "@/components/AuthCard";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { allPasswordRulesMet, checkPasswordRules } from "@/lib/passwordRules";
+import { useRedirectIfAuthed } from "@/lib/hooks/useRedirectIfAuthed";
 
 // Same blue-for-met / gray-for-not-yet treatment as TaxHoldingBadge (D62,
 // D74-adjacent) — deliberately not green/red, which DESIGN.md reserves for
@@ -31,6 +32,7 @@ function DotIcon({ className }: { className: string }) {
 }
 
 export default function SignupPage() {
+  useRedirectIfAuthed();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

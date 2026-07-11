@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { AuthCard, AUTH_INPUT_CLASS, AUTH_LABEL_CLASS } from "@/components/AuthCard";
 import { CONTAINER_CLASS } from "@/lib/layout";
+import { useRedirectIfAuthed } from "@/lib/hooks/useRedirectIfAuthed";
 
 export default function LoginPage() {
+  useRedirectIfAuthed();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
