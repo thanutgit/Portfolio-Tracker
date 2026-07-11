@@ -51,7 +51,11 @@ export function NavBar() {
   // the brand alone, no tabs beside it. Same reasoning applies to the auth
   // pages: no portfolio/user context yet either.
   const isOverview = pathname === "/";
-  const isAuthPage = pathname === "/login" || pathname === "/signup";
+  const isAuthPage =
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname === "/forgot-password" ||
+    pathname === "/reset-password";
   const portfolioId = searchParams.get("portfolio");
 
   return (

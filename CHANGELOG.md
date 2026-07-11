@@ -1835,3 +1835,73 @@
   `migrations/README.md`, and `ROADMAP.md`'s Phase 7 (now marked done)
   for consistency, since leaving them contradicting each other would
   have been stale documentation, not just an unrelated line.
+
+## 2026-07-11 — Forgot/reset password flow (Supabase Auth built-in, no custom email)
+- New `/forgot-password` page: single email field, calls
+  `supabase.auth.resetPasswordForEmail(email, { redirectTo:
+  `${origin}/reset-password` })`. Always shows the same "If an account
+  exists for this email, a reset link has been sent." message on
+  success — this holds automatically without any extra logic, since
+  Supabase's own API already doesn't distinguish "email has an
+  account" from "email doesn't" on success; a genuine API error (rate
+  limit, etc.) still shows through, since that applies regardless of
+  which email was submitted and so doesn't leak anything about a
+  specific account.
+- New `/reset-password` page, reachable only via the emailed link:
+  Supabase's client auto-detects the link's token on load
+  (`detectSessionInUrl`, on by default) and turns it into a short-lived
+  recovery session. The page checks `getSession()` plus an
+  `onAuthStateChange` listener for the `PASSWORD_RECOVERY` event to
+  tell a real reset link apart from someone navigating to the URL
+  directly with no token — the latter shows a plain "This password
+  reset link is invalid or has expired" message with a link back to
+  `/forgot-password`, never a raw Supabase error.
+  - New password + confirm password fields, reusing `/signup`'s
+    checklist exactly: same rules (`src/lib/passwordRules.ts`,
+    unchanged), same checkmark/dot UI — extracted the list rendering
+    itself into a new shared `src/components/PasswordChecklist.tsx`
+    (used by both `/signup`, refactored to drop its own inline copy,
+    and the new page). Submit stays disabled until every rule passes,
+    identical to signup.
+  - On submit: `supabase.auth.updateUser({ password })`, then
+    deliberately `signOut()`s before redirecting to
+    `/login?reset=success` — without that sign-out, `/login`'s own
+    `useRedirectIfAuthed()` would immediately bounce the
+    still-logged-in-from-recovery user to `/` before they ever saw the
+    success message, defeating the point of redirecting to `/login` at
+    all.
+  - Deliberately does **not** call `useRedirectIfAuthed()`, unlike
+    every other auth page — arriving here via a real link legitimately
+    creates a session, so that hook would immediately break the page
+    by bouncing a valid recovery visit away.
+- `/login` now has a "Forgot password?" link under the Log in button,
+  and reads a one-time `?reset=success` param via
+  `window.location.search` inside a plain `useEffect` (not
+  `useSearchParams()`, which would need a `<Suspense>` boundary here
+  for what's only ever a single read right after a fresh navigation,
+  never reactive in-page query tracking) — shows it via the existing
+  `Toast` component, then `router.replace("/login")` to strip the
+  param from the URL.
+- `NavBar`'s `isAuthPage` check extended to `/forgot-password` and
+  `/reset-password` — same tab-hiding treatment as `/login`/`/signup`.
+- Verified live with Playwright (read-only, no emails sent, no DB
+  writes): `/login` shows the "Forgot password?" link and navigates to
+  `/forgot-password` correctly (NavBar tabs hidden there too);
+  `/reset-password` visited directly with no token shows the friendly
+  "invalid or has expired" message and a working "Request a new link"
+  button, not a raw error; `/login?reset=success` shows the toast and
+  strips the query param from the URL. Could not test the full
+  valid-link → set-new-password path end-to-end without triggering a
+  real password-reset email to a real account, which wasn't attempted
+  this round.
+- ARCHITECTURE.md's Auth section updated with the full forgot/reset
+  flow, the `PasswordChecklist` extraction, and the `signOut()`-before-
+  redirect reasoning.
+- Design decisions worth logging in DECISIONS.md (not yet saved): see
+  the response for this round (extracting `PasswordChecklist` as a
+  shared component now used in two places; signing out the recovery
+  session before redirecting to `/login` rather than logging the user
+  straight into `/`; using `window.location.search` instead of
+  `useSearchParams()` on `/login` to avoid an unnecessary Suspense
+  wrap; deliberately excluding `/reset-password` from
+  `useRedirectIfAuthed()`).

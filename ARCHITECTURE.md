@@ -118,14 +118,55 @@ no server middleware; see "Route protection" below for why.
   disabled until every rule passes; this is separate from, and doesn't
   suppress, the `error` state that shows Supabase's own signup errors (e.g.
   duplicate email, rate limit) — the two coexist in the same card.
-- Both pages share `AuthCard` (`src/components/AuthCard.tsx`) — same card
-  chrome as the app's existing modals (`rounded-xl border shadow-lg`), not
-  Supabase Auth UI's prebuilt component, so they match the rest of the app.
+- **Forgot/reset password** — Supabase Auth built-in, no custom email
+  sending:
+  - `/forgot-password` (`src/app/forgot-password/page.tsx`) — a single
+    email field, calls `supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${origin}/reset-password` })`. Always shows the same
+    "If an account exists for this email, a reset link has been sent."
+    message on success, regardless of whether the email actually has an
+    account — this holds automatically, since Supabase's own API already
+    doesn't distinguish the two cases on success; the app only shows a
+    different (real error) message when Supabase itself returns an error
+    (e.g. rate limit), which applies independent of which email was
+    submitted and so leaks nothing about a specific account.
+  - `/reset-password` (`src/app/reset-password/page.tsx`) — reached only
+    via the emailed link, which Supabase's client auto-detects on load
+    (`detectSessionInUrl`, default on) and turns into a short-lived
+    "recovery" session. The page checks `getSession()` (plus an
+    `onAuthStateChange` listener for the `PASSWORD_RECOVERY` event) to
+    tell a real reset link apart from someone just navigating to the URL
+    directly — the latter shows a plain "This password reset link is
+    invalid or has expired" message with a link back to
+    `/forgot-password`, never a raw Supabase error. On submit, calls
+    `supabase.auth.updateUser({ password })`, then deliberately
+    `signOut()`s before redirecting to `/login?reset=success` — without
+    that sign-out, `/login`'s own `useRedirectIfAuthed()` would
+    immediately bounce the still-logged-in-from-recovery user away to
+    `/` before they ever saw the success message. `/login` reads that
+    `?reset=success` param once via `window.location.search` inside a
+    plain `useEffect` (not `useSearchParams()`, which would need a
+    `<Suspense>` boundary for what's only ever a one-time read right
+    after a fresh navigation, not reactive in-page query tracking),
+    shows it via the existing `Toast` component, then
+    `router.replace("/login")` to strip the param from the URL.
+  - Reuses the same password rules and checklist UI as `/signup`: pure
+    rules in `src/lib/passwordRules.ts`, and the checkmark/dot list
+    itself extracted to `src/components/PasswordChecklist.tsx` (used by
+    both pages — `/signup` was refactored to use it instead of its own
+    inline copy).
+  - Deliberately does **not** use `useRedirectIfAuthed()` — unlike every
+    other auth page, arriving at `/reset-password` via a real link
+    legitimately creates a session, so that hook would break the page.
+- All four auth pages share `AuthCard` (`src/components/AuthCard.tsx`) —
+  same card chrome as the app's existing modals (`rounded-xl border
+  shadow-lg`), not Supabase Auth UI's prebuilt component, so they match
+  the rest of the app.
 - `NavBar` tracks auth state via `supabase.auth.getSession()` +
   `onAuthStateChange()`, showing "Log out" (calls `signOut()`, redirects to
   `/`) when signed in or a "Log in" link when signed out. Portfolio tabs are
-  hidden on `/login`/`/signup`, same reasoning as Overview (no
-  portfolio/user context there yet).
+  hidden on `/login`/`/signup`/`/forgot-password`/`/reset-password`, same
+  reasoning as Overview (no portfolio/user context there yet).
 - Schema prep from step 1 lives in `migrations/0007_add_auth_user_id.sql`:
   adds the `portfolios.user_id → auth.users` foreign key (the column itself
   already existed, unreferenced, since `0001_init.sql`), and a nullable,

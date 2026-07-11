@@ -389,3 +389,20 @@ up with the others, making the cause harder to find.
 ## D87 — `user_settings.user_id` stays nullable while `portfolios.user_id` becomes not null
 Deliberately asymmetric — matches exactly what was asked, not extended
 any further.
+
+## D88 — Extracted `PasswordChecklist` as a shared component
+Now used in two places (signup, reset-password) — shouldn't duplicate
+the same code.
+
+## D89 — Sign out the recovery session before redirecting to `/login`, rather than logging straight into `/`
+Without signing out first, `/login`'s own `useRedirectIfAuthed()`
+would immediately bounce the user away before they ever saw the
+success message.
+
+## D90 — Use `window.location.search` instead of `useSearchParams()` on `/login`
+Avoids an unnecessary Suspense wrap for what's only ever a one-time
+read.
+
+## D91 — Deliberately don't use `useRedirectIfAuthed()` on `/reset-password`
+This page intentionally has a temporary session from the email link —
+using that hook would immediately break the entire page.

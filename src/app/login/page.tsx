@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { AuthCard, AUTH_INPUT_CLASS, AUTH_LABEL_CLASS } from "@/components/AuthCard";
+import { Toast } from "@/components/Toast";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { useRedirectIfAuthed } from "@/lib/hooks/useRedirectIfAuthed";
 
@@ -15,6 +16,21 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Read via window.location.search rather than useSearchParams() — this
+    // only needs a one-time read right after a fresh navigation from
+    // /reset-password, not reactive tracking of in-page query changes, so
+    // it doesn't need the Suspense-boundary that useSearchParams() would
+    // require here.
+    if (new URLSearchParams(window.location.search).get("reset") === "success") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setToastMessage("Password reset — you can now log in with your new password.");
+      router.replace("/login");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +81,15 @@ export default function LoginPage() {
             </button>
           </form>
 
+          <p className="mt-3 text-center text-sm">
+            <Link
+              href="/forgot-password"
+              className="font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+            >
+              Forgot password?
+            </Link>
+          </p>
+
           <p className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
             Don&apos;t have an account?{" "}
             <Link
@@ -76,6 +101,8 @@ export default function LoginPage() {
           </p>
         </AuthCard>
       </main>
+
+      <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>
   );
 }
