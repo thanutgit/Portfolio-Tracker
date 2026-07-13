@@ -137,3 +137,28 @@ already handled the same situation.
 **Prevention:** Be careful with `?? 0` (or any default value) on
 financial numbers — "no data" and "data exists and is zero" are two
 different states and must not collapse into the same value.
+
+## #7 — Reset-password link redirects to / instead of /reset-password
+**What happened:** Clicking the password-reset link from the email
+landed on `/` (Overview) with the user automatically logged in,
+instead of on `/reset-password`. Checked and ruled out:
+- App code — `redirectTo` uses `window.location.origin` dynamically
+  (correct), and no `router.push`/`router.replace` anywhere in the
+  codebase can redirect away from `/reset-password` on load.
+- Supabase Dashboard → Redirect URLs — both required URLs (localhost
+  and the Vercel production domain), with the exact `/reset-password`
+  path, were already configured correctly.
+- Found a banner in the Supabase Dashboard reading "investigating a
+  technical issue" around the same time as testing — suspected as the
+  actual cause, but not confirmed 100%, since Supabase's email rate
+  limit (hit during earlier testing this session) blocked retrying
+  enough times to fully verify.
+
+**Status:** Not fixed. Waiting on (1) Supabase resolving the incident
+they flagged, and (2) the email rate limit resetting so the flow can
+be retested cleanly.
+
+**Prevention:** For a bug touching auth/email flows, check the
+Supabase status page before digging through the app's own code first —
+otherwise it's easy to burn time chasing a bug that doesn't actually
+exist on this end.

@@ -122,14 +122,28 @@ no server middleware; see "Route protection" below for why.
   sending:
   - `/forgot-password` (`src/app/forgot-password/page.tsx`) — a single
     email field, calls `supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/reset-password` })`. Always shows the same
-    "If an account exists for this email, a reset link has been sent."
-    message on success, regardless of whether the email actually has an
-    account — this holds automatically, since Supabase's own API already
-    doesn't distinguish the two cases on success; the app only shows a
-    different (real error) message when Supabase itself returns an error
-    (e.g. rate limit), which applies independent of which email was
-    submitted and so leaks nothing about a specific account.
+    redirectTo: `${window.location.origin}/reset-password` })`.
+    `window.location.origin` is read at request time in the browser, so
+    this resolves correctly wherever the app is actually running
+    (`http://localhost:3000` in dev, the real Vercel domain in
+    production) with no hardcoded host and no per-environment code
+    change needed. Always shows the same "If an account exists for this
+    email, a reset link has been sent." message on success, regardless
+    of whether the email actually has an account — this holds
+    automatically, since Supabase's own API already doesn't distinguish
+    the two cases on success; the app only shows a different (real
+    error) message when Supabase itself returns an error (e.g. rate
+    limit), which applies independent of which email was submitted and
+    so leaks nothing about a specific account.
+  - **Supabase Dashboard requirement, separate from the code above**:
+    Supabase Auth only honors a `redirectTo` value that matches an entry
+    in **Authentication → URL Configuration → Redirect URLs** — an
+    unlisted URL is rejected/ignored server-side no matter how correct
+    the app's own code is. Both of the following must be added there by
+    hand (this is dashboard configuration, not something committed to
+    this repo or checkable from the code):
+    `http://localhost:3000/reset-password` (dev) and the production
+    equivalent (e.g. `https://<your-vercel-domain>/reset-password`).
   - `/reset-password` (`src/app/reset-password/page.tsx`) — reached only
     via the emailed link, which Supabase's client auto-detects on load
     (`detectSessionInUrl`, default on) and turns into a short-lived

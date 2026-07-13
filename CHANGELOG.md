@@ -1905,3 +1905,20 @@
   `useSearchParams()` on `/login` to avoid an unnecessary Suspense
   wrap; deliberately excluding `/reset-password` from
   `useRedirectIfAuthed()`).
+
+## 2026-07-11 — Verified /forgot-password's redirectTo is already dynamic (no code change needed)
+- Confirmed `resetPasswordForEmail`'s `redirectTo` already reads
+  `window.location.origin` at request time (set this way when
+  `/forgot-password` was first built) — resolves to
+  `http://localhost:3000/reset-password` in dev and the real
+  production domain automatically, with no hardcoded host anywhere
+  (grepped the whole `src/` tree for "localhost" — zero matches) and
+  no code change needed between environments.
+- Documented in ARCHITECTURE.md that this is separate from, and not a
+  substitute for, the Supabase Dashboard's own **Authentication → URL
+  Configuration → Redirect URLs** allow-list — Supabase rejects/ignores
+  any `redirectTo` value not listed there, regardless of how correct
+  the app's own code is. Both
+  `http://localhost:3000/reset-password` and the production URL need
+  to be added there by hand — this is dashboard configuration, not
+  something in this repo, so it can't be checked or fixed from code.

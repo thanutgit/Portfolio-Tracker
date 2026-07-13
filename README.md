@@ -91,13 +91,28 @@ balance" table can't do. Full reasoning in `DECISIONS.md` D1–D6.
 - Warns (doesn't block) when selling a fund that hasn't met its holding
   period yet
 
+### Accounts & security
+- Sign up / log in with email + password (Supabase Auth)
+- Every page except login/signup requires a session — logged-out visitors
+  are redirected to `/login`
+- Each user's portfolios, transactions, targets, snapshots, and settings
+  are private to them (Postgres Row Level Security) — one user can never
+  see another's holdings
+- Assets and prices are shared across all users by design (a fund's price
+  is the same for everyone; there's no reason to duplicate that data
+  per-user)
+
 ### Not yet built (see `ROADMAP.md` for details)
 - Multi-currency / FX (deferred — every asset is THB today)
 - Live price API for Thai funds (no good free API exists; CSV import covers
   this instead)
-- Auth + Row Level Security (currently single-user — anyone with the URL
-  can read/write everything)
 - LLM-assisted analysis (Phase 6 — on hold, scope not yet defined)
+
+### Known issue (being investigated)
+- Password reset emails currently redirect to `/` instead of
+  `/reset-password` after clicking the link — the `redirectTo` value and
+  Supabase's Redirect URLs allow-list both check out correctly, so the
+  cause isn't yet confirmed. See `GOTCHAS.md` for the investigation so far.
 
 ### Deliberately dropped
 - Benchmark comparison (SET, S&P 500) — S&P 500 has a solid free API
@@ -132,11 +147,15 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-Open http://localhost:3000
+Open http://localhost:3000 — you'll be redirected to `/signup` to create an
+account (or `/login` if you already have one). Every page requires a session.
 
 ### Database setup
 Run the SQL files in `migrations/` **in numeric order** in the Supabase SQL
-Editor (0001 through 0006 currently). See `migrations/README.md` for details.
+Editor (0001 through 0010 currently). See `migrations/README.md` for details.
+Migrations 0008–0010 (Phase 7: auth backfill + RLS) assume you're
+bootstrapping with exactly one real account — see the comments in those
+files if you're setting up fresh with multiple users from the start.
 
 ---
 
@@ -147,6 +166,8 @@ portfolio-tracker/
 ├── src/
 │   ├── app/
 │   │   ├── page.tsx           #   / — Overview: all portfolio cards
+│   │   ├── login/             #   /login
+│   │   ├── signup/            #   /signup
 │   │   ├── holdings/          #   /holdings — holdings, P&L, XIRR,
 │   │   │                          trend chart, allocation, transaction/dividend history
 │   │   ├── targets/           #   /targets — set target allocation
@@ -157,15 +178,17 @@ portfolio-tracker/
 │   │   └── api/
 │   │       └── refresh-crypto-prices/  # fetches BTC price from CoinGecko
 │   ├── components/            # PageHeader, NavBar, ConfirmDialog, Toast,
-│   │                             TrendChart, DonutChart, HistoryModal, ...
+│   │                             TrendChart, DonutChart, HistoryModal,
+│   │                             RequireAuth (session gate), ...
 │   └── lib/
 │       ├── supabase.ts        # Supabase client
 │       ├── xirr.ts            # money-weighted annualized return
 │       ├── drift.ts           # shared drift formula (Overview/Holdings/Rebalancing)
 │       ├── taxHolding.ts       # RMF/SSF/ThaiESG holding-period rules
 │       ├── transactions.ts    # wouldCauseNegativeHolding() safety check
-│       └── assets.ts          # asset creation / symbol-uniqueness, shared across forms
-├── migrations/                # ordered schema changes (0001–0006)
+│       ├── assets.ts          # asset creation / symbol-uniqueness, shared across forms
+│       └── passwordRules.ts   # signup password strength rules (pure functions)
+├── migrations/                # ordered schema changes (0001–0010)
 ├── seed_data.sql              # real portfolio data (reference/restore only, not schema)
 ├── .env.local                 # real keys (gitignored)
 ├── .claude/hooks/              # blocks reading .env; enforces CHANGELOG.md updates
@@ -204,6 +227,14 @@ checks that `CHANGELOG.md` gets updated whenever code changes.
   never appear in the repo or in browser-side code
 - Claude Code hooks in `.claude/hooks/` block reading `.env` files and
   enforce a `CHANGELOG.md` update on every code/schema change
-- **RLS is currently off** (single-user dev setup) — anyone with the URL +
-  publishable key can read/write everything. See `ROADMAP.md` Phase 7 and
-  `GOTCHAS.md` #2.
+- **Row Level Security is on** for `portfolios`, `user_settings`,
+  `transactions`, `targets`, and `portfolio_snapshots` — each user can only
+  read/write their own rows. `assets` and `prices` are intentionally shared
+  across all users (see `ARCHITECTURE.md`).
+- Every page except `/login`/`/signup` requires a logged-in session
+  (client-side `<RequireAuth>` gate — see `ARCHITECTURE.md`, not
+  middleware, per `DECISIONS.md`)
+- No inactivity/session-timeout enforcement yet — Supabase's "Inactivity
+  timeout" setting requires the Pro plan; sessions currently last until the
+  user manually logs out. Not a concern for now, but worth knowing if this
+  is ever shared more widely.
