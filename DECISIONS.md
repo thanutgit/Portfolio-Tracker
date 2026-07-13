@@ -446,3 +446,22 @@ dialog per row.
 
 ## D102 — Widened the modal to `max-w-2xl`
 The original width was too narrow for the added per-row information.
+
+## D103 — Hand-rolled `DatePicker`, no external library
+Avoids a new dependency, consistent with `DonutChart`'s earlier
+precedent of hand-rolling SVG instead.
+
+## D104 — Year selection uses a number input, not a hundred-option dropdown
+A long year dropdown is unwieldy — typing the year directly is faster.
+
+## D105 — Reused the `TaxHoldingBadge` `position: fixed` + `getBoundingClientRect()` pattern
+Same underlying problem (clipped by a modal's `overflow-y-auto`),
+solved with the same approach already proven to work.
+
+## D106 — No arrow-key navigation within the calendar grid
+The text input already serves as the fast keyboard path — the
+calendar itself is meant for mouse/touch use.
+
+## D107 — Calendar month/weekday labels stay in English; only the typed format (DD/MM/YYYY) follows Thai convention
+Keeps the scope appropriately sized — no need to translate the whole
+calendar UI.

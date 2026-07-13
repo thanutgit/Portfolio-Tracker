@@ -534,6 +534,48 @@ inconsistent (e.g. fixing an old entry before its dependents), and the
 user should decide, not be locked out. See DECISIONS.md D55–D56 and
 GOTCHAS.md #1 for the incident this guards against.
 
+## DatePicker (replaces every native `<input type="date">`)
+`src/components/DatePicker.tsx` — hand-rolled, no date-picker library (see
+DECISIONS.md; consistent with `DonutChart` predating this same
+no-new-dependency approach). Motivation: the native date input formats and
+parses per the browser's locale (often `MM/DD/YYYY`), and typing is rigid
+per-segment — typing `29/04/2024` straight through fails because `29` gets
+read as a month first. This component always types/displays `DD/MM/YYYY`
+(the order used in Thailand) regardless of browser locale, auto-inserting
+`/` as digits fill in (`29042024` → `29/04/2024` progressively, not typed
+by the user).
+
+**API is a drop-in swap, not a schema/backend change**: `value`/`onChange`
+are still a plain ISO `"YYYY-MM-DD"` string, exactly what the native input
+produced — every call site only changed how the input/output is wired
+(`onChange={(v) => setX(v)}` instead of `onChange={(e) =>
+setX(e.target.value)}`), never what's stored or sent to Supabase. Replaced
+at all 4 existing date inputs: `TransactionModal` (per-row trade date),
+`HistoryModal` (edit-transaction trade date, dividend date), and the
+Settings page's birth date.
+
+**Validation**: only a real calendar date is accepted (rejects e.g.
+`32/13/2024`) — computed via `new Date(yyyy, mm, 0).getDate()` to get the
+correct last-day-of-month including leap years, not a hardcoded
+days-per-month table. An incomplete date (still being typed) shows no
+error; a complete-but-invalid one does, and doesn't call `onChange` until
+it resolves to a real date — the parent's stored value is simply
+unchanged while typing is incomplete or invalid.
+
+**Calendar dropdown**: click-to-navigate month `<select>` + a plain
+number input for the year (rather than a single scrollable year
+`<select>`, which would need 100+ options to usefully reach a birth
+year decades back) plus prev/next month arrows. Positioned with
+`position: fixed`, anchored to the input's own `getBoundingClientRect()`
+at open time — the same fix already used for `TaxHoldingBadge`'s
+tooltip, since `TransactionModal`/`HistoryModal` both scroll under
+`overflow-y-auto`, which silently clips a `position: absolute` child
+extending past it. Closes on an outside click, Escape, or window scroll
+(no reposition-on-scroll — closing is a simpler, acceptable trade-off for
+a short-lived popover). No arrow-key day-to-day navigation within the
+grid — the text input is the fast keyboard-only path; the calendar itself
+is mouse/touch-oriented.
+
 ## Conventions
 - Money math in decimal/`numeric`, never floating point.
 - Keep data fetching and secrets server-side where sensible.

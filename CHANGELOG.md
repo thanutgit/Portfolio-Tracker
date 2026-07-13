@@ -2112,3 +2112,65 @@
   considers same-batch buy lots in addition to real DB-fetched ones;
   one combined numbered confirm dialog instead of per-row dialogs;
   widened the modal to `max-w-2xl` to fit the denser per-row layout).
+
+## 2026-07-14 — Custom DatePicker replaces every native <input type="date">
+- New `src/components/DatePicker.tsx` — hand-rolled (no new dependency,
+  consistent with `DonutChart` predating the same no-new-dependency
+  approach), replacing the native date input everywhere: the browser's
+  own date input formats/parses per locale (often `MM/DD/YYYY`) and
+  types rigidly per-segment, so typing `29/04/2024` straight through
+  failed (`29` gets read as a month first). This component always
+  reads/types `DD/MM/YYYY` (the order used in Thailand) regardless of
+  browser locale.
+- Free-typed text input auto-inserts `/` as digits fill in —
+  `29042024` becomes `29/04/2024` progressively — plus a calendar-icon
+  button opening a click-to-pick dropdown (month `<select>` + a plain
+  year number input, rather than one long year `<select>`, so jumping
+  back decades to a birth year doesn't mean scrolling 100+ options;
+  prev/next month arrows alongside).
+- **Validates real calendar dates only** — rejects e.g. `32/13/2024`,
+  and correctly handles leap years (`new Date(yyyy, mm, 0).getDate()`
+  for the true last day of the month, not a hardcoded days-per-month
+  table). An incomplete date shows no error yet; a complete-but-invalid
+  one does, and doesn't call `onChange` until it resolves to a real
+  date.
+- **API unchanged from the native input's**: `value`/`onChange` are
+  still a plain ISO `"YYYY-MM-DD"` string — every one of the 4 call
+  sites only changed how it's wired
+  (`onChange={(v) => setX(v)}` instead of reading `e.target.value`),
+  never what's stored or sent to Supabase. No schema change, no
+  backend change. Replaced at: `TransactionModal` (per-row trade
+  date), `HistoryModal` (edit-transaction trade date, dividend date),
+  and Settings' birth date — confirmed via grep that no
+  `type="date"` remains anywhere in `src/`.
+- **Calendar dropdown uses `position: fixed`**, anchored to the
+  input's own `getBoundingClientRect()` at open time — reused
+  verbatim from `TaxHoldingBadge`'s tooltip fix, since
+  `TransactionModal`/`HistoryModal` both scroll under
+  `overflow-y-auto`, which would otherwise silently clip a `position:
+  absolute` dropdown extending past it (the exact bug that fix
+  addressed the first time). Closes on outside click, Escape, or
+  window scroll; capped at `max-w-[calc(100vw-2rem)]` so it can't
+  overflow a narrow mobile viewport.
+- **No arrow-key navigation within the calendar grid** — the text
+  input is the fast keyboard-only path; the calendar itself is
+  mouse/touch-oriented, with only Escape-to-close as keyboard support
+  for the dropdown.
+- ARCHITECTURE.md: new "DatePicker" section covering all of the above.
+  DESIGN.md's Components section: new entry documenting the unified
+  input+icon control and the calendar's visual treatment (filled blue
+  = selected, translucent ring = today).
+- Verified via `npm run lint` and `npm run build` (both clean); traced
+  the core date-parsing/formatting logic by hand for known edge cases
+  (Feb 29 2024 leap year accepted, Feb 29 2023 rejected, month 13/day
+  32 rejected, partial typing produces the expected progressive
+  `DD/MM/YYYY` display). Could not visually verify the rendered
+  component live — every page using it is behind `<RequireAuth>`
+  (Phase 7), and I don't have login credentials for the real account.
+- Design decisions worth logging in DECISIONS.md (not yet saved): see
+  the response for this round (hand-rolled instead of a date-picker
+  library; month `<select>` + year number input instead of a single
+  long year dropdown; reusing the `TaxHoldingBadge` `position: fixed`
+  pattern; no in-grid keyboard navigation; calendar month/weekday
+  labels stay in English while only the typed date format follows the
+  Thai DD/MM/YYYY convention).

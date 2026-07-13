@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { DatePicker } from "@/components/DatePicker";
 import { ASSET_TYPES, CURRENCIES, TAX_BUCKETS, createAsset } from "@/lib/assets";
 import { formatMoney, formatQuantity } from "@/lib/format";
 import { computeTaxHoldingStatus } from "@/lib/taxHolding";
@@ -794,12 +795,10 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div>
                     <label className={LABEL_CLASS}>Trade date</label>
-                    <input
-                      type="date"
+                    <DatePicker
                       value={row.tradeDate}
-                      onChange={(e) => updateRow(row.id, { tradeDate: e.target.value })}
+                      onChange={(v) => updateRow(row.id, { tradeDate: v })}
                       required
-                      className={TEXT_INPUT_CLASS}
                     />
                   </div>
                   <div>

@@ -6,6 +6,7 @@ import { CONTAINER_CLASS } from "@/lib/layout";
 import { Toast } from "@/components/Toast";
 import { PageHeader } from "@/components/PageHeader";
 import { RequireAuth } from "@/components/RequireAuth";
+import { DatePicker } from "@/components/DatePicker";
 
 export default function SettingsPage() {
   const [rowId, setRowId] = useState<string | null>(null);
@@ -96,12 +97,7 @@ export default function SettingsPage() {
                 <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
                   Birth date
                 </label>
-                <input
-                  type="date"
-                  value={birthDate}
-                  onChange={(e) => setBirthDate(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950"
-                />
+                <DatePicker value={birthDate} onChange={setBirthDate} />
                 <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                   Used only to check RMF&apos;s 55-and-older condition. SSF and ThaiESG have no age
                   condition.

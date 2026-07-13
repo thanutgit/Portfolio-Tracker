@@ -135,6 +135,20 @@ glowing trend line), but still precise and trustworthy with real money.
   destructive-action convention as the delete icon, not a P&L color.
   `window.confirm()`/`alert()` are not used anywhere; native browser
   dialogs don't match the app's visual language.
+- **DatePicker** (`src/components/DatePicker.tsx`): replaces every native
+  `<input type="date">` in the app. A single bordered control (matching
+  the standard text-input treatment) holding a free-typed `DD/MM/YYYY`
+  text field plus a trailing calendar-icon button, not two separate
+  fields — reads as one input. The calendar dropdown itself uses the
+  same card treatment as every other floating panel (`rounded-lg border
+  shadow-lg`, `bg-white`/`dark:bg-gray-900`), with the selected day filled
+  solid blue and today's (unselected) day outlined in a translucent blue
+  ring — same accent-blue language as the rest of the app, not a new
+  color. Positioned with `position: fixed` (anchored to the input's own
+  `getBoundingClientRect()` at open time), the same fix already used for
+  `TaxHoldingBadge`'s tooltip — both live inside a modal's
+  `overflow-y-auto` scroll area, which silently clips a `position:
+  absolute` child that extends past it.
 - **Badges/chips**: a rounded-full pill with a translucent tinted background
   (e.g. `bg-green-500/10 text-green-600`) — first real use is the % return
   badge on the Overview page's portfolio cards. Uses `pnlBadgeClass()`

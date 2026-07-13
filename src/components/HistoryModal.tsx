@@ -10,6 +10,7 @@ import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Toast } from "@/components/Toast";
 import { TaxHoldingBadge } from "@/components/TaxHoldingBadge";
+import { DatePicker } from "@/components/DatePicker";
 
 interface Props {
   portfolioId: string;
@@ -65,8 +66,6 @@ function TrashIcon() {
 
 const INPUT_CLASS =
   "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-mono tabular-nums focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950";
-const TEXT_INPUT_CLASS =
-  "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950";
 const LABEL_CLASS = "mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300";
 const ICON_BTN_CLASS =
   "inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-gray-400 transition-all duration-150 hover:-translate-y-px hover:bg-gray-100 hover:text-blue-600 hover:shadow-sm active:translate-y-0 active:shadow-none dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-blue-400";
@@ -617,13 +616,7 @@ export function HistoryModal({
 
                 <div>
                   <label className={LABEL_CLASS}>Trade date</label>
-                  <input
-                    type="date"
-                    value={txnDate}
-                    onChange={(e) => setTxnDate(e.target.value)}
-                    required
-                    className={TEXT_INPUT_CLASS}
-                  />
+                  <DatePicker value={txnDate} onChange={setTxnDate} required />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -782,13 +775,7 @@ export function HistoryModal({
             <form onSubmit={handleDividendSubmit} className="space-y-3">
               <div>
                 <label className={LABEL_CLASS}>Date</label>
-                <input
-                  type="date"
-                  value={divDate}
-                  onChange={(e) => setDivDate(e.target.value)}
-                  required
-                  className={TEXT_INPUT_CLASS}
-                />
+                <DatePicker value={divDate} onChange={setDivDate} required />
               </div>
               <div>
                 <label className={LABEL_CLASS}>Amount received (gross)</label>
