@@ -149,6 +149,12 @@ glowing trend line), but still precise and trustworthy with real money.
   border/shadow at rest; hover adds the standard lift + a faint blue border
   tint + `cursor: pointer` — the whole row is a `<Link>` to that portfolio's
   Holdings page, so it needs to read as clickable without being a "button."
+  A small pencil (rename) icon sits right next to the name, same icon-button
+  treatment as Assets' edit icon (`h-6 w-6`, slightly smaller than that
+  page's `h-7 w-7` to fit inline next to compact card text) — its click
+  handler calls `preventDefault()`/`stopPropagation()` so it doesn't also
+  trigger the card's own Link navigation, since it's a nested interactive
+  element inside the whole-card anchor.
 - **Drift-threshold alerts**: amber/orange (`amber-500`/`amber-400`), never
   red — red stays reserved for P&L losses. Two presentations of the same
   underlying signal (`src/lib/drift.ts`): a compact translucent pill badge

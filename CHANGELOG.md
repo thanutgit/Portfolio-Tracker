@@ -1922,3 +1922,42 @@
   `http://localhost:3000/reset-password` and the production URL need
   to be added there by hand — this is dashboard configuration, not
   something in this repo, so it can't be checked or fixed from code.
+
+## 2026-07-12 — Rename portfolio from the Overview page
+- Each portfolio card now has a small pencil icon next to its name
+  (same icon path as Assets' edit icon) opening a new
+  `EditPortfolioModal` (`src/components/EditPortfolioModal.tsx`) — a
+  single "Portfolio name" field, prefilled with the current name, plus
+  Save/Cancel. Same modal chrome as `NewPortfolioModal`/`EditAssetModal`
+  (`rounded-xl border shadow-lg` card over a blurred backdrop) — no
+  native `prompt()`/`confirm()`.
+- Save does a direct `update` on `portfolios.name` only (`base_currency`
+  untouched) — no schema change needed, the column already existed.
+  Validation: trimmed name must be non-empty ("Enter a portfolio
+  name." if blank). No duplicate-name check — portfolio name isn't a
+  unique identifier anywhere in the schema, so two portfolios can
+  legitimately share a name, matching the existing `portfolios` table
+  design (no unique constraint on `name`).
+- On success: closes the modal, shows a "Portfolio renamed." toast
+  (matching the existing "Portfolio created." pattern), and reloads
+  the Overview summaries so the new name appears immediately.
+- **Nested-interactive-element handling**: since each entire portfolio
+  card is itself a `<Link>` to that portfolio's Holdings page, the new
+  pencil button's `onClick` calls `preventDefault()` and
+  `stopPropagation()` so clicking it opens the rename modal instead of
+  also navigating away — otherwise every click on the icon would have
+  triggered the card's own link underneath it.
+- DESIGN.md's "Portfolio Overview cards" entry updated to document the
+  new pencil icon and the nested-interactive-element handling.
+- Verified via `npm run lint` and `npm run build` (both clean). Could
+  not verify the actual rename live via Playwright — Overview is
+  behind `<RequireAuth>` (Phase 7), and I don't have login credentials
+  for the real account, so this needs to be checked manually (see the
+  response for this round for exact steps).
+- Design decisions worth logging in DECISIONS.md (not yet saved): see
+  the response for this round (nested button-in-anchor with
+  `stopPropagation` instead of restructuring the whole card away from
+  being a real `<Link>`; icon button sized `h-6 w-6` here vs. Assets'
+  `h-7 w-7`, to fit inline next to compact card text; no duplicate-name
+  check, matching the schema's existing lack of a uniqueness
+  constraint on `portfolios.name`).

@@ -406,3 +406,14 @@ read.
 ## D91 — Deliberately don't use `useRedirectIfAuthed()` on `/reset-password`
 This page intentionally has a temporary session from the email link —
 using that hook would immediately break the entire page.
+
+## D92 — Portfolio card's edit button uses `stopPropagation`/`preventDefault` instead of restructuring the card out of its `<Link>`
+Minimal diff, faster to ship — accepted the tradeoff of non-standard
+HTML nesting (interactive inside interactive) for simplicity.
+
+## D93 — Portfolio card's edit icon uses `h-6 w-6`, not Assets' `h-7 w-7`
+Fits the card's more compact text area better.
+
+## D94 — No duplicate-name check when renaming a portfolio
+`portfolios.name` has never had a unique constraint in the schema —
+consistent with existing behavior.

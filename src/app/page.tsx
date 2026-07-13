@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { EmptyState } from "@/components/EmptyState";
 import { NewPortfolioModal } from "@/components/NewPortfolioModal";
+import { EditPortfolioModal } from "@/components/EditPortfolioModal";
 import { Toast } from "@/components/Toast";
 import type { HoldingWithReturns, Portfolio } from "@/lib/types";
 import { formatMoney, formatPercent, pnlBadgeClass } from "@/lib/format";
@@ -65,6 +66,14 @@ function PlusIcon() {
   );
 }
 
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 3.5l3 3L7 16l-4 1 1-4L13.5 3.5z" />
+    </svg>
+  );
+}
+
 interface PortfolioSummary {
   portfolio: Portfolio;
   holdingsCount: number;
@@ -79,6 +88,7 @@ export default function OverviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNewPortfolio, setShowNewPortfolio] = useState(false);
+  const [editingPortfolio, setEditingPortfolio] = useState<Portfolio | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   async function loadSummaries() {
@@ -168,6 +178,12 @@ export default function OverviewPage() {
     await loadSummaries();
   }
 
+  async function handlePortfolioRenamed() {
+    setEditingPortfolio(null);
+    setToastMessage("Portfolio renamed.");
+    await loadSummaries();
+  }
+
   return (
     <RequireAuth>
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
@@ -222,9 +238,27 @@ export default function OverviewPage() {
                     <WalletIcon />
                   </span>
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-gray-900 dark:text-gray-100">
-                      {portfolio.name}
-                    </p>
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <p className="truncate font-medium text-gray-900 dark:text-gray-100">
+                        {portfolio.name}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          // Stop the click from also triggering the
+                          // surrounding <Link>'s navigation to Holdings —
+                          // this button intentionally sits inside a whole-
+                          // card link.
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditingPortfolio(portfolio);
+                        }}
+                        aria-label="Rename portfolio"
+                        className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded-full text-gray-400 transition-all duration-150 hover:-translate-y-px hover:bg-gray-100 hover:text-blue-600 hover:shadow-sm active:translate-y-0 active:shadow-none dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-blue-400"
+                      >
+                        <PencilIcon />
+                      </button>
+                    </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       {holdingsCount} holding{holdingsCount === 1 ? "" : "s"}
                     </p>
@@ -271,6 +305,14 @@ export default function OverviewPage() {
         <NewPortfolioModal
           onClose={() => setShowNewPortfolio(false)}
           onCreated={handlePortfolioCreated}
+        />
+      )}
+
+      {editingPortfolio && (
+        <EditPortfolioModal
+          portfolio={editingPortfolio}
+          onClose={() => setEditingPortfolio(null)}
+          onSaved={handlePortfolioRenamed}
         />
       )}
 
