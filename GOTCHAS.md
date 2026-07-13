@@ -141,24 +141,32 @@ different states and must not collapse into the same value.
 ## #7 — Reset-password link redirects to / instead of /reset-password
 **What happened:** Clicking the password-reset link from the email
 landed on `/` (Overview) with the user automatically logged in,
-instead of on `/reset-password`. Checked and ruled out:
-- App code — `redirectTo` uses `window.location.origin` dynamically
-  (correct), and no `router.push`/`router.replace` anywhere in the
-  codebase can redirect away from `/reset-password` on load.
-- Supabase Dashboard → Redirect URLs — both required URLs (localhost
-  and the Vercel production domain), with the exact `/reset-password`
-  path, were already configured correctly.
-- Found a banner in the Supabase Dashboard reading "investigating a
-  technical issue" around the same time as testing — suspected as the
-  actual cause, but not confirmed 100%, since Supabase's email rate
-  limit (hit during earlier testing this session) blocked retrying
-  enough times to fully verify.
+instead of on `/reset-password`.
 
-**Status:** Not fixed. Waiting on (1) Supabase resolving the incident
-they flagged, and (2) the email rate limit resetting so the flow can
-be retested cleanly.
+**Root cause (confirmed via DevTools Network tab):** testing was done
+through a Vercel **Preview** deployment URL (e.g.
+`portfolio-tracker-4qtceqr4m-thanutsu.vercel.app`) — Vercel generates a
+new random preview URL on every push. That URL was never (and
+realistically can't be) registered in Supabase's Redirect URLs
+allow-list, which only lists the stable `localhost:3000` and the real
+production domain. Supabase rejected the unrecognized `redirectTo` and
+fell back to its default, landing on `/` with the recovery session's
+tokens attached instead of `/reset-password` — and since Overview is
+behind `<RequireAuth>`, a valid (if unintended) session was enough to
+render it normally, logging the user in.
 
-**Prevention:** For a bug touching auth/email flows, check the
-Supabase status page before digging through the app's own code first —
-otherwise it's easy to burn time chasing a bug that doesn't actually
-exist on this end.
+Ruled out along the way: the app's own code (`redirectTo` was already
+correct — `${window.location.origin}/reset-password`, verified against
+the working tree, git HEAD, and the original commit) and a Supabase
+account-wide incident (a real banner was showing at the time, but
+coincidental, not the actual cause).
+
+**Fix:** Test the reset-password flow only against a URL that's
+actually in the Redirect URLs allow-list — `localhost:3000` for local
+dev, or the stable production domain. Never a per-push Vercel Preview
+URL.
+
+**Prevention:** When testing a Supabase redirect-based flow (password
+reset, email confirmation, OAuth) on Vercel, use the production domain
+or localhost, not a Preview deployment's randomly-generated URL —
+preview URLs change every push and aren't practical to allow-list.
