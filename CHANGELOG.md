@@ -2050,3 +2050,65 @@
   currency in addition to the asked-for sector/country, given the real
   risk of a foreign stock being left mistagged as THB; one-time
   refresh instead of a poll, matching Finnhub's tighter quota).
+
+## 2026-07-14 — Multi-row transaction entry (add several buy/sell rows in one save)
+- `TransactionModal` ("+ Add transaction") now holds an array of
+  independent rows (`TxnRow[]`) instead of a single set of fields —
+  each row has its own Type/Asset/Trade date/Quantity/Price/Fee, and
+  the same asset can appear in more than one row on purpose (e.g. buy
+  in row 1, sell some of it in row 2 — nothing excludes an asset
+  already picked by another row, unlike Prices' picker, since repeat
+  transactions for the same asset are normal).
+- **"+ Add another row"** appends a blank row without touching
+  already-filled ones. Each row has its own trash-icon delete button
+  (hidden when only one row remains, so there's always at least one).
+- **"+ Add new asset" stays a single shared sub-form**, not duplicated
+  per row — opened by whichever row's link was clicked
+  (`newAssetForRowId` tracks the target), so N rows never show N
+  copies of the full Finnhub search flow at once. Manual entry and
+  Finnhub search modes both work exactly as before (see the previous
+  Finnhub entry) — unchanged, just re-targetable per row.
+- **Per-row validation on Save**: a fully blank row (no asset, no
+  quantity, no price) is silently skipped — just an unused spare row,
+  not an error. A partially-filled row shows its own error message
+  and blocks Save; already-correct rows are never blocked by another
+  row's mistake.
+- **Running-total oversell + tax-holding checks across the batch**:
+  previously these only checked against the database's current state;
+  now they replay valid rows in order, starting from one batch-fetched
+  `holdings` snapshot and one batch-fetched buy-lots snapshot (not one
+  query per row), maintaining an in-memory running-quantity map and a
+  same-batch buy-lots map as each row is processed. A sell row's
+  oversell check and tax-holding check both see any buy earlier in the
+  *same* batch, not just what's already saved — directly addressing
+  the ask's buy-then-sell-same-batch example. All warnings across all
+  rows are collected into one combined, numbered preview/confirm
+  message rather than N separate dialogs.
+- **Atomicity**: all valid rows are inserted via a single
+  `.insert([...])` call with an array. PostgREST turns this into one
+  multi-row `INSERT` statement, which Postgres commits or rejects as a
+  whole — satisfies "don't partially commit if one row fails" with no
+  explicit transaction wrapper or RPC needed. Directly guards against
+  the exact partial-commit scenario in GOTCHAS.md #1.
+- On success: resets to a single blank row, and the toast now reads
+  "1 transaction saved."/"N transactions saved." (dynamic count) —
+  `onSaved` changed from `() => void` to `(count: number) => void`,
+  updated at its one call site in `holdings/page.tsx`.
+- Modal widened from `max-w-lg` to `max-w-2xl` to fit each row's six
+  fields without cramming; date/quantity/price/fee now sit in a
+  4-column grid per row (was a 2-column stack) given the extra width.
+- ARCHITECTURE.md: new "Multi-row transaction entry" section
+  describing the row-array model, shared new-asset sub-form, running-
+  total warning replay, and insert atomicity.
+- Verified via `npm run lint` and `npm run build` (both clean). Could
+  not verify the actual multi-row flow live via Playwright — Holdings
+  is behind `<RequireAuth>` (Phase 7), and I don't have login
+  credentials for the real account, so this needs to be checked
+  manually (see the response for this round for exact steps).
+- Design decisions worth logging in DECISIONS.md (not yet saved): see
+  the response for this round (a fully blank row is silently skipped,
+  not an error; "+ Add new asset" is one shared sub-form targeted per
+  row rather than duplicated N times; a sell row's tax-holding check
+  considers same-batch buy lots in addition to real DB-fetched ones;
+  one combined numbered confirm dialog instead of per-row dialogs;
+  widened the modal to `max-w-2xl` to fit the denser per-row layout).

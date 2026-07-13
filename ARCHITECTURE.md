@@ -303,6 +303,44 @@ across all flagged lots. Warns, doesn't block — same philosophy as the
 oversell check (D44): selling is still legitimately possible in real
 life, just potentially at the cost of a claimed tax benefit.
 
+## Multi-row transaction entry
+`TransactionModal` ("+ Add transaction") holds an array of independent
+rows (`TxnRow[]`, each with its own type/asset/date/quantity/price/fee),
+not a single set of fields — "+ Add another row" appends a blank one;
+"+ Add new asset" is a single shared sub-form (not duplicated per row),
+targeted at whichever row triggered it via `newAssetForRowId`, so N rows
+don't each show their own copy of the full Finnhub search flow.
+
+**Per-row validation, on Save**: a row left completely blank (no asset,
+no quantity, no price) is silently skipped, not an error — it's just an
+unused spare row. A partially-filled row is a validation error shown
+under that specific row and blocks Save; already-correct rows are never
+blocked by another row's error.
+
+**Running-total oversell + tax-holding checks**: the same warnings that
+existed for a single transaction (oversell, RMF/SSF/ThaiESG holding-period
+— both described above) now need to account for earlier rows in the same
+batch, not just the database's current state — e.g. buying an asset in
+row 1 and selling some of it in row 2 must check row 2 against row 1's
+effect. Implemented by replaying valid rows in order, starting from a
+batch-fetched `holdings`/buy-lot snapshot (one query each, not one per
+row) and mutating an in-memory running-quantity map and a
+same-batch-buy-lots map as each row is processed — a sell row's tax check
+looks at both the real DB-fetched lots *and* any buy lots earlier in this
+same batch. All warnings across all rows are collected into one combined
+preview/confirm message (numbered per row), not N separate dialogs.
+
+**Atomicity**: all valid rows are inserted in a single
+`.insert([...])` call with an array — PostgREST translates this into one
+multi-row `INSERT` statement, which Postgres commits or rejects as a
+whole. This directly satisfies "don't partially commit if one row fails"
+without needing an explicit transaction wrapper or RPC — see GOTCHAS.md
+#1 for the incident this guards against.
+
+On success: resets to a single blank row and reports the saved count to
+the caller (`onSaved(count)`) — Holdings' toast reads "1 transaction
+saved."/"N transactions saved." accordingly.
+
 ## Crypto price refresh
 `POST /api/refresh-crypto-prices` (Next.js Route Handler, server-side) fetches
 BTC/THB (and ETH/THB) from CoinGecko's free public API (no key) and inserts

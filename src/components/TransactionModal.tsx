@@ -12,7 +12,7 @@ import type { Asset } from "@/lib/types";
 interface Props {
   portfolioId: string;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (count: number) => void;
 }
 
 function today() {
@@ -25,15 +25,140 @@ const TEXT_INPUT_CLASS =
   "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950";
 const LABEL_CLASS = "mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300";
 
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M4 6h12M8 6V4.5A1.5 1.5 0 019.5 3h1A1.5 1.5 0 0112 4.5V6m-6.5 0l.6 10.2A1.5 1.5 0 007.6 17.7h4.8a1.5 1.5 0 001.5-1.5L14.5 6"
+      />
+    </svg>
+  );
+}
+
+interface TxnRow {
+  id: string;
+  type: "buy" | "sell";
+  assetId: string | null;
+  tradeDate: string;
+  quantity: string;
+  price: string;
+  fee: string;
+}
+
+function newTxnRow(): TxnRow {
+  return {
+    id: crypto.randomUUID(),
+    type: "buy",
+    assetId: null,
+    tradeDate: today(),
+    quantity: "",
+    price: "",
+    fee: "0",
+  };
+}
+
+// Per-row asset combobox — each row picks independently (the same asset can
+// legitimately appear in more than one row, e.g. a buy and a later sell of
+// the same holding in one batch, so rows never exclude each other's pick).
+function TxnAssetCombobox({
+  options,
+  selected,
+  onSelect,
+  onClear,
+  onAddNew,
+}: {
+  options: Asset[];
+  selected: Asset | null;
+  onSelect: (asset: Asset) => void;
+  onClear: () => void;
+  onAddNew: (query: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options.slice(0, 8);
+    return options
+      .filter((a) => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [options, query]);
+
+  if (selected) {
+    return (
+      <div className="flex items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950">
+        <span>
+          <span className="font-medium">{selected.symbol}</span>{" "}
+          <span className="text-gray-500 dark:text-gray-400">{selected.name}</span>
+        </span>
+        <button
+          type="button"
+          onClick={onClear}
+          className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+        >
+          Change
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Search by symbol or name…"
+        className={TEXT_INPUT_CLASS}
+      />
+      {open && (
+        <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+          <ul className="max-h-40 overflow-y-auto">
+            {filtered.map((a) => (
+              <li key={a.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelect(a);
+                    setQuery("");
+                    setOpen(false);
+                  }}
+                  className="block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  <span className="font-medium">{a.symbol}</span>{" "}
+                  <span className="text-gray-500 dark:text-gray-400">{a.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={() => onAddNew(query)}
+            className="block w-full cursor-pointer border-t border-gray-200 px-3 py-2 text-left text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-gray-700 dark:text-blue-400 dark:hover:bg-blue-950/40"
+          >
+            + Add new asset{query.trim() ? ` "${query.trim()}"` : ""}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
-  const [type, setType] = useState<"buy" | "sell">("buy");
+  const [rows, setRows] = useState<TxnRow[]>([newTxnRow()]);
+  const [rowErrors, setRowErrors] = useState<Map<string, string>>(new Map());
 
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [assetQuery, setAssetQuery] = useState("");
-  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
-  const [showAssetList, setShowAssetList] = useState(false);
 
-  const [showNewAssetForm, setShowNewAssetForm] = useState(false);
+  // "New asset" is a single shared sub-form (not one per row) — opened by
+  // whichever row's "+ Add new asset" was clicked, tracked by
+  // newAssetForRowId. Keeping only one instance avoids showing N copies of
+  // the whole Finnhub search flow at once.
+  const [newAssetForRowId, setNewAssetForRowId] = useState<string | null>(null);
   const [newAssetMode, setNewAssetMode] = useState<"manual" | "search">("manual");
   const [newSymbol, setNewSymbol] = useState("");
   const [newName, setNewName] = useState("");
@@ -56,11 +181,6 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
   const [stockSearchError, setStockSearchError] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
 
-  const [tradeDate, setTradeDate] = useState(today());
-  const [quantity, setQuantity] = useState("");
-  const [price, setPrice] = useState("");
-  const [fee, setFee] = useState("0");
-
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { confirm, confirmState, handleConfirm, handleCancel } = useConfirm();
@@ -79,22 +199,30 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     })();
   }, []);
 
-  const filteredAssets = useMemo(() => {
-    const q = assetQuery.trim().toLowerCase();
-    if (!q) return assets.slice(0, 8);
-    return assets
-      .filter((a) => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q))
-      .slice(0, 8);
-  }, [assets, assetQuery]);
-
-  function selectAsset(asset: Asset) {
-    setSelectedAsset(asset);
-    setAssetQuery("");
-    setShowAssetList(false);
+  function updateRow(id: string, patch: Partial<TxnRow>) {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    setRowErrors((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+  function addRow() {
+    setRows((prev) => [...prev, newTxnRow()]);
+  }
+  function removeRow(id: string) {
+    setRows((prev) => (prev.length === 1 ? prev : prev.filter((r) => r.id !== id)));
+    setRowErrors((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
   }
 
-  function openNewAssetForm() {
-    setNewSymbol(assetQuery.trim());
+  function openNewAssetForm(rowId: string, prefill: string) {
+    setNewSymbol(prefill.trim());
     setNewName("");
     setNewAssetType("stock");
     setNewCurrency("THB");
@@ -107,8 +235,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     setStockSearchQuery("");
     setStockSearchResults([]);
     setStockSearchError(null);
-    setShowNewAssetForm(true);
-    setShowAssetList(false);
+    setNewAssetForRowId(rowId);
   }
 
   // Debounced Finnhub symbol search — waits ~400ms after the user stops
@@ -192,8 +319,10 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
       return;
     }
     setAssets((prev) => [...prev, data].sort((a, b) => a.symbol.localeCompare(b.symbol)));
-    setSelectedAsset(data);
-    setShowNewAssetForm(false);
+    if (newAssetForRowId) {
+      updateRow(newAssetForRowId, { assetId: data.id });
+    }
+    setNewAssetForRowId(null);
     setCreatingAsset(false);
   }
 
@@ -201,101 +330,168 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     e.preventDefault();
     setError(null);
 
-    if (!selectedAsset) {
-      setError("Choose an asset first.");
-      return;
-    }
-    const quantityNum = Number(quantity);
-    const priceNum = Number(price);
-    const feeNum = Number(fee) || 0;
-    if (!quantityNum || quantityNum <= 0) {
-      setError("Enter a quantity greater than 0.");
-      return;
-    }
-    if (!priceNum || priceNum <= 0) {
-      setError("Enter a price per unit greater than 0.");
-      return;
-    }
+    // Per-row validation: a fully blank row (no asset, no quantity, no
+    // price) is silently skipped, not an error — it's just a spare row the
+    // user added and didn't fill in. A partially-filled row is a per-row
+    // error that blocks Save until fixed; other, already-correct rows are
+    // never blocked by it.
+    const nextRowErrors = new Map<string, string>();
+    const valid: (TxnRow & { asset: Asset })[] = [];
+    for (const row of rows) {
+      const isBlank = !row.assetId && !row.quantity.trim() && !row.price.trim();
+      if (isBlank) continue;
 
-    let warningLine = "";
-    let taxWarningLine = "";
-    if (type === "sell") {
-      const { data: holding, error: holdingError } = await supabase
-        .from("holdings")
-        .select("quantity")
-        .eq("portfolio_id", portfolioId)
-        .eq("asset_id", selectedAsset.id)
-        .maybeSingle();
-      if (holdingError) {
-        setError(holdingError.message);
-        return;
+      const asset = row.assetId ? (assets.find((a) => a.id === row.assetId) ?? null) : null;
+      if (!asset) {
+        nextRowErrors.set(row.id, "Choose an asset.");
+        continue;
       }
-      const currentQty = holding ? Number(holding.quantity) : 0;
-      if (quantityNum > currentQty) {
-        warningLine = `\n\n⚠ You currently hold ${formatQuantity(currentQty)} unit${currentQty === 1 ? "" : "s"} of ${selectedAsset.symbol} — this sells more than you have.`;
+      const quantityNum = Number(row.quantity);
+      if (!quantityNum || quantityNum <= 0) {
+        nextRowErrors.set(row.id, "Enter a quantity greater than 0.");
+        continue;
       }
+      const priceNum = Number(row.price);
+      if (!priceNum || priceNum <= 0) {
+        nextRowErrors.set(row.id, "Enter a price per unit greater than 0.");
+        continue;
+      }
+      valid.push({ ...row, asset });
+    }
 
-      // Thai tax-advantaged funds: warn (don't block, same as the oversell
-      // check above — D44) if any buy lot for this asset hasn't met its
-      // holding-period/age condition yet. Reuses computeTaxHoldingStatus()
-      // as-is; doesn't track which specific lot a sale would draw from
-      // (this app doesn't do per-lot FIFO allocation), so this checks
-      // every buy lot and reports the most conservative (latest) date.
-      if (selectedAsset.tax_bucket !== "normal") {
-        const [{ data: buyLots }, { data: settingsRow }] = await Promise.all([
-          supabase
-            .from("transactions")
-            .select("trade_date")
-            .eq("portfolio_id", portfolioId)
-            .eq("asset_id", selectedAsset.id)
-            .eq("type", "buy"),
-          supabase.from("user_settings").select("birth_date").limit(1).maybeSingle(),
-        ]);
-        const birthDate = settingsRow?.birth_date ?? null;
-        const notYetEligible = (buyLots ?? [])
-          .map((lot) =>
-            computeTaxHoldingStatus({
-              taxBucket: selectedAsset.tax_bucket,
-              tradeDate: lot.trade_date,
-              birthDate,
-            })
-          )
-          .filter((r) => r.status !== "met");
+    if (nextRowErrors.size > 0) {
+      setRowErrors(nextRowErrors);
+      setError("Fix the highlighted row(s) before saving.");
+      return;
+    }
+    if (valid.length === 0) {
+      setError("Add at least one transaction first.");
+      return;
+    }
 
-        if (notYetEligible.length > 0) {
-          const latestDate = notYetEligible
-            .map((r) => r.ageEligibleDate ?? r.eligibleDate ?? "")
-            .reduce((max, d) => (d > max ? d : max), "");
-          const lotWord = notYetEligible.length === 1 ? "lot" : "lots";
-          taxWarningLine = `\n\n⚠ ${notYetEligible.length} ${selectedAsset.tax_bucket} ${lotWord} of ${selectedAsset.symbol} ${notYetEligible.length === 1 ? "hasn't" : "haven't"} met the holding-period condition yet (not eligible until ${latestDate}). Selling now may require repaying the tax benefit already claimed on ${notYetEligible.length === 1 ? "that lot" : "those lots"}.`;
+    // Oversell + tax-holding warnings need a running total across THIS
+    // batch, not just today's DB state — e.g. buying an asset in row 1 and
+    // selling some of it in row 2 must be checked against row 1's effect,
+    // not just what's already in the database.
+    const uniqueAssetIds = [...new Set(valid.map((r) => r.asset.id))];
+    const { data: holdingsData, error: holdingsError } = await supabase
+      .from("holdings")
+      .select("asset_id, quantity")
+      .eq("portfolio_id", portfolioId)
+      .in("asset_id", uniqueAssetIds);
+    if (holdingsError) {
+      setError(holdingsError.message);
+      return;
+    }
+    const runningQty = new Map<string, number>(
+      (holdingsData ?? []).map((h) => [h.asset_id, Number(h.quantity)])
+    );
+
+    const taxBucketAssetIds = [
+      ...new Set(valid.filter((r) => r.asset.tax_bucket !== "normal").map((r) => r.asset.id)),
+    ];
+    const existingBuyLotsByAsset = new Map<string, { trade_date: string }[]>();
+    let birthDate: string | null = null;
+    if (taxBucketAssetIds.length > 0) {
+      const [{ data: buyLots }, { data: settingsRow }] = await Promise.all([
+        supabase
+          .from("transactions")
+          .select("asset_id, trade_date")
+          .eq("portfolio_id", portfolioId)
+          .eq("type", "buy")
+          .in("asset_id", taxBucketAssetIds),
+        supabase.from("user_settings").select("birth_date").limit(1).maybeSingle(),
+      ]);
+      birthDate = settingsRow?.birth_date ?? null;
+      for (const lot of buyLots ?? []) {
+        const list = existingBuyLotsByAsset.get(lot.asset_id) ?? [];
+        list.push({ trade_date: lot.trade_date });
+        existingBuyLotsByAsset.set(lot.asset_id, list);
+      }
+    }
+    // Buy lots added earlier in this same batch — a sell later in the batch
+    // needs to see these too, not just what's already saved in the DB.
+    const batchBuyLotsByAsset = new Map<string, { trade_date: string }[]>();
+
+    const rowMessages: string[] = [];
+    const warningLines: string[] = [];
+
+    valid.forEach((row, index) => {
+      const qty = Number(row.quantity);
+      const priceNum = Number(row.price);
+      const feeNum = Number(row.fee) || 0;
+      const total = qty * priceNum + feeNum;
+      const verb = row.type === "buy" ? "Buy" : "Sell";
+      rowMessages.push(
+        `${index + 1}. ${verb} ${formatQuantity(qty)} unit${qty === 1 ? "" : "s"} of ${row.asset.symbol} at ${formatMoney(priceNum, row.asset.currency)} per unit — total ${formatMoney(total, row.asset.currency)} (incl. fee).`
+      );
+
+      const currentQty = runningQty.get(row.asset.id) ?? 0;
+
+      if (row.type === "sell") {
+        if (qty > currentQty) {
+          warningLines.push(
+            `⚠ Row ${index + 1} (${row.asset.symbol}): you'd hold ${formatQuantity(currentQty)} unit${currentQty === 1 ? "" : "s"} at this point in the batch — this sells more than that.`
+          );
+        }
+        if (row.asset.tax_bucket !== "normal") {
+          const lots = [
+            ...(existingBuyLotsByAsset.get(row.asset.id) ?? []),
+            ...(batchBuyLotsByAsset.get(row.asset.id) ?? []),
+          ];
+          const notYetEligible = lots
+            .map((lot) =>
+              computeTaxHoldingStatus({
+                taxBucket: row.asset.tax_bucket,
+                tradeDate: lot.trade_date,
+                birthDate,
+              })
+            )
+            .filter((r) => r.status !== "met");
+          if (notYetEligible.length > 0) {
+            const latestDate = notYetEligible
+              .map((r) => r.ageEligibleDate ?? r.eligibleDate ?? "")
+              .reduce((max, d) => (d > max ? d : max), "");
+            const lotWord = notYetEligible.length === 1 ? "lot" : "lots";
+            warningLines.push(
+              `⚠ Row ${index + 1} (${row.asset.symbol}): ${notYetEligible.length} ${row.asset.tax_bucket} ${lotWord} ${notYetEligible.length === 1 ? "hasn't" : "haven't"} met the holding-period condition yet (not eligible until ${latestDate}). Selling now may require repaying the tax benefit already claimed.`
+            );
+          }
+        }
+        runningQty.set(row.asset.id, currentQty - qty);
+      } else {
+        runningQty.set(row.asset.id, currentQty + qty);
+        if (row.asset.tax_bucket !== "normal") {
+          const list = batchBuyLotsByAsset.get(row.asset.id) ?? [];
+          list.push({ trade_date: row.tradeDate });
+          batchBuyLotsByAsset.set(row.asset.id, list);
         }
       }
-    }
+    });
 
-    const total = quantityNum * priceNum + feeNum;
-    const verb = type === "buy" ? "buy" : "sell";
-    const message =
-      `You're about to ${verb} ${formatQuantity(quantityNum)} unit${quantityNum === 1 ? "" : "s"} of ` +
-      `${selectedAsset.symbol} at ${formatMoney(priceNum, selectedAsset.currency)} per unit — ` +
-      `total ${formatMoney(total, selectedAsset.currency)} (incl. fee).${warningLine}${taxWarningLine}`;
+    const message = `You're about to save ${valid.length} transaction${valid.length === 1 ? "" : "s"}:\n\n${rowMessages.join("\n")}${warningLines.length > 0 ? `\n\n${warningLines.join("\n")}` : ""}`;
 
     const confirmed = await confirm(message, {
-      title: "Confirm transaction",
-      confirmLabel: type === "buy" ? "Confirm buy" : "Confirm sell",
-      variant: warningLine || taxWarningLine ? "danger" : "default",
+      title: "Confirm transactions",
+      confirmLabel: `Confirm ${valid.length} transaction${valid.length === 1 ? "" : "s"}`,
+      variant: warningLines.length > 0 ? "danger" : "default",
     });
     if (!confirmed) return;
 
     setSaving(true);
-    const { error: insertError } = await supabase.from("transactions").insert({
+    // A single multi-row insert is one SQL statement — Postgres commits or
+    // rejects it as a whole, so a bad row can never partially land while
+    // others succeed (see GOTCHAS.md #1, which this directly guards against).
+    const insertRows = valid.map((row) => ({
       portfolio_id: portfolioId,
-      asset_id: selectedAsset.id,
-      type,
-      trade_date: tradeDate,
-      quantity: quantityNum,
-      price: priceNum,
-      fee: feeNum,
-    });
+      asset_id: row.asset.id,
+      type: row.type,
+      trade_date: row.tradeDate,
+      quantity: Number(row.quantity),
+      price: Number(row.price),
+      fee: Number(row.fee) || 0,
+    }));
+    const { error: insertError } = await supabase.from("transactions").insert(insertRows);
     if (insertError) {
       setError(insertError.message);
       setSaving(false);
@@ -303,7 +499,8 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     }
 
     setSaving(false);
-    onSaved();
+    setRows([newTxnRow()]);
+    onSaved(valid.length);
   }
 
   return (
@@ -312,15 +509,15 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-gray-200 bg-white p-6 shadow-lg dark:border-gray-800 dark:bg-gray-900"
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-gray-200 bg-white p-6 shadow-lg dark:border-gray-800 dark:bg-gray-900"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
-          Add transaction
+          Add transaction(s)
         </h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Recorded as a new row in the transaction ledger — average cost and holdings recompute
-          automatically.
+          Recorded as new rows in the transaction ledger — average cost and holdings recompute
+          automatically. Add more than one below to save several at once.
         </p>
 
         {error && (
@@ -330,341 +527,337 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
         )}
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          {/* Type: two big buttons, not a dropdown — hard to misclick */}
-          <div>
-            <label className={LABEL_CLASS}>Type</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setType("buy")}
-                className={`cursor-pointer rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-150 ${
-                  type === "buy"
-                    ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:border-blue-400/40 dark:bg-blue-400/10 dark:text-blue-400"
-                    : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-800"
+          {rows.map((row, rowIndex) => {
+            const selectedAsset = row.assetId
+              ? (assets.find((a) => a.id === row.assetId) ?? null)
+              : null;
+            const rowError = rowErrors.get(row.id);
+            return (
+              <div
+                key={row.id}
+                className={`space-y-3 rounded-lg border p-3 ${
+                  rowError
+                    ? "border-red-300 dark:border-red-800"
+                    : "border-gray-200 dark:border-gray-800"
                 }`}
               >
-                Buy
-              </button>
-              <button
-                type="button"
-                onClick={() => setType("sell")}
-                className={`cursor-pointer rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-150 ${
-                  type === "sell"
-                    ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:border-blue-400/40 dark:bg-blue-400/10 dark:text-blue-400"
-                    : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-800"
-                }`}
-              >
-                Sell
-              </button>
-            </div>
-          </div>
-
-          {/* Asset combobox */}
-          <div>
-            <label className={LABEL_CLASS}>Asset</label>
-            {selectedAsset ? (
-              <div className="flex items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950">
-                <span>
-                  <span className="font-medium">{selectedAsset.symbol}</span>{" "}
-                  <span className="text-gray-500 dark:text-gray-400">{selectedAsset.name}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedAsset(null)}
-                  className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  Change
-                </button>
-              </div>
-            ) : (
-              <div className="relative">
-                <input
-                  type="text"
-                  value={assetQuery}
-                  onChange={(e) => setAssetQuery(e.target.value)}
-                  onFocus={() => setShowAssetList(true)}
-                  onBlur={() => setTimeout(() => setShowAssetList(false), 150)}
-                  placeholder="Search by symbol or name…"
-                  className={TEXT_INPUT_CLASS}
-                />
-                {showAssetList && (
-                  <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
-                    <ul className="max-h-40 overflow-y-auto">
-                      {filteredAssets.map((a) => (
-                        <li key={a.id}>
-                          <button
-                            type="button"
-                            onClick={() => selectAsset(a)}
-                            className="block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
-                          >
-                            <span className="font-medium">{a.symbol}</span>{" "}
-                            <span className="text-gray-500 dark:text-gray-400">{a.name}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                <div className="flex items-center gap-2">
+                  <div className="grid flex-1 grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={openNewAssetForm}
-                      className="block w-full cursor-pointer border-t border-gray-200 px-3 py-2 text-left text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-gray-700 dark:text-blue-400 dark:hover:bg-blue-950/40"
+                      onClick={() => updateRow(row.id, { type: "buy" })}
+                      className={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-all duration-150 ${
+                        row.type === "buy"
+                          ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:border-blue-400/40 dark:bg-blue-400/10 dark:text-blue-400"
+                          : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-800"
+                      }`}
                     >
-                      + Add new asset{assetQuery.trim() ? ` "${assetQuery.trim()}"` : ""}
+                      Buy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateRow(row.id, { type: "sell" })}
+                      className={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-all duration-150 ${
+                        row.type === "sell"
+                          ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:border-blue-400/40 dark:bg-blue-400/10 dark:text-blue-400"
+                          : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-800"
+                      }`}
+                    >
+                      Sell
                     </button>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Inline "add new asset" expansion */}
-          {showNewAssetForm && (
-            <div className="space-y-3 rounded-lg border border-dashed border-gray-300 p-3 dark:border-gray-700">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                New asset
-              </p>
-
-              {newAssetError && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-                  {newAssetError}
-                </div>
-              )}
-
-              {/* Manual entry (Thai funds etc.) vs. Finnhub search (foreign
-                  stocks) — same neutral-blue toggle treatment as Buy/Sell,
-                  not colored green/red. */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setNewAssetMode("manual")}
-                  className={`cursor-pointer rounded-lg border px-3 py-2 text-xs font-medium transition-all duration-150 ${
-                    newAssetMode === "manual"
-                      ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:border-blue-400/40 dark:bg-blue-400/10 dark:text-blue-400"
-                      : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-800"
-                  }`}
-                >
-                  Manual entry
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNewAssetMode("search")}
-                  className={`cursor-pointer rounded-lg border px-3 py-2 text-xs font-medium transition-all duration-150 ${
-                    newAssetMode === "search"
-                      ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:border-blue-400/40 dark:bg-blue-400/10 dark:text-blue-400"
-                      : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-800"
-                  }`}
-                >
-                  Search stock (Finnhub)
-                </button>
-              </div>
-
-              {newAssetMode === "search" && (
-                <div className="relative">
-                  <label className={LABEL_CLASS}>Search by company name or ticker</label>
-                  <input
-                    type="text"
-                    value={stockSearchQuery}
-                    onChange={(e) => setStockSearchQuery(e.target.value)}
-                    placeholder="e.g. Apple or AAPL"
-                    className={TEXT_INPUT_CLASS}
-                  />
-                  {searchingStocks && (
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Searching…</p>
-                  )}
-                  {stockSearchError && (
-                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">{stockSearchError}</p>
-                  )}
-                  {stockSearchResults.length > 0 && (
-                    <ul className="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
-                      {stockSearchResults.map((r) => (
-                        <li key={r.symbol}>
-                          <button
-                            type="button"
-                            onClick={() => selectStockResult(r)}
-                            className="block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
-                          >
-                            <span className="font-medium">{r.symbol}</span>{" "}
-                            <span className="text-gray-500 dark:text-gray-400">{r.description}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {loadingProfile && (
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Loading company details…
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LABEL_CLASS}>Symbol</label>
-                  <input
-                    type="text"
-                    value={newSymbol}
-                    onChange={(e) => setNewSymbol(e.target.value)}
-                    placeholder="e.g. AAPL"
-                    className={TEXT_INPUT_CLASS}
-                  />
-                </div>
-                <div>
-                  <label className={LABEL_CLASS}>Name</label>
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="e.g. Apple Inc."
-                    className={TEXT_INPUT_CLASS}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                {newAssetMode === "manual" && (
-                  <div>
-                    <label className={LABEL_CLASS}>Asset type</label>
-                    <select
-                      value={newAssetType}
-                      onChange={(e) => setNewAssetType(e.target.value)}
-                      className={`cursor-pointer ${TEXT_INPUT_CLASS}`}
+                  {rows.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeRow(row.id)}
+                      aria-label="Remove row"
+                      className="inline-flex h-9 w-9 flex-shrink-0 cursor-pointer items-center justify-center rounded-full text-gray-400 transition-all duration-150 hover:-translate-y-px hover:bg-red-50 hover:text-red-600 hover:shadow-sm active:translate-y-0 active:shadow-none dark:text-gray-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
                     >
-                      {ASSET_TYPES.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
+                      <TrashIcon />
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className={LABEL_CLASS}>Asset</label>
+                  <TxnAssetCombobox
+                    options={assets}
+                    selected={selectedAsset}
+                    onSelect={(a) => updateRow(row.id, { assetId: a.id })}
+                    onClear={() => updateRow(row.id, { assetId: null })}
+                    onAddNew={(query) => openNewAssetForm(row.id, query)}
+                  />
+                </div>
+
+                {/* Inline "add new asset" expansion — shared sub-form,
+                    targeted at whichever row's "+ Add new asset" was clicked */}
+                {newAssetForRowId === row.id && (
+                  <div className="space-y-3 rounded-lg border border-dashed border-gray-300 p-3 dark:border-gray-700">
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      New asset
+                    </p>
+
+                    {newAssetError && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+                        {newAssetError}
+                      </div>
+                    )}
+
+                    {/* Manual entry (Thai funds etc.) vs. Finnhub search
+                        (foreign stocks) — same neutral-blue toggle
+                        treatment as Buy/Sell, not colored green/red. */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewAssetMode("manual")}
+                        className={`cursor-pointer rounded-lg border px-3 py-2 text-xs font-medium transition-all duration-150 ${
+                          newAssetMode === "manual"
+                            ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:border-blue-400/40 dark:bg-blue-400/10 dark:text-blue-400"
+                            : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        Manual entry
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewAssetMode("search")}
+                        className={`cursor-pointer rounded-lg border px-3 py-2 text-xs font-medium transition-all duration-150 ${
+                          newAssetMode === "search"
+                            ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:border-blue-400/40 dark:bg-blue-400/10 dark:text-blue-400"
+                            : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        Search stock (Finnhub)
+                      </button>
+                    </div>
+
+                    {newAssetMode === "search" && (
+                      <div className="relative">
+                        <label className={LABEL_CLASS}>Search by company name or ticker</label>
+                        <input
+                          type="text"
+                          value={stockSearchQuery}
+                          onChange={(e) => setStockSearchQuery(e.target.value)}
+                          placeholder="e.g. Apple or AAPL"
+                          className={TEXT_INPUT_CLASS}
+                        />
+                        {searchingStocks && (
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Searching…
+                          </p>
+                        )}
+                        {stockSearchError && (
+                          <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                            {stockSearchError}
+                          </p>
+                        )}
+                        {stockSearchResults.length > 0 && (
+                          <ul className="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                            {stockSearchResults.map((r) => (
+                              <li key={r.symbol}>
+                                <button
+                                  type="button"
+                                  onClick={() => selectStockResult(r)}
+                                  className="block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+                                >
+                                  <span className="font-medium">{r.symbol}</span>{" "}
+                                  <span className="text-gray-500 dark:text-gray-400">
+                                    {r.description}
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {loadingProfile && (
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Loading company details…
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={LABEL_CLASS}>Symbol</label>
+                        <input
+                          type="text"
+                          value={newSymbol}
+                          onChange={(e) => setNewSymbol(e.target.value)}
+                          placeholder="e.g. AAPL"
+                          className={TEXT_INPUT_CLASS}
+                        />
+                      </div>
+                      <div>
+                        <label className={LABEL_CLASS}>Name</label>
+                        <input
+                          type="text"
+                          value={newName}
+                          onChange={(e) => setNewName(e.target.value)}
+                          placeholder="e.g. Apple Inc."
+                          className={TEXT_INPUT_CLASS}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {newAssetMode === "manual" && (
+                        <div>
+                          <label className={LABEL_CLASS}>Asset type</label>
+                          <select
+                            value={newAssetType}
+                            onChange={(e) => setNewAssetType(e.target.value)}
+                            className={`cursor-pointer ${TEXT_INPUT_CLASS}`}
+                          >
+                            {ASSET_TYPES.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <div className={newAssetMode === "search" ? "col-span-2" : ""}>
+                        <label className={LABEL_CLASS}>Currency</label>
+                        <select
+                          value={newCurrency}
+                          onChange={(e) => setNewCurrency(e.target.value)}
+                          className={`cursor-pointer ${TEXT_INPUT_CLASS}`}
+                        >
+                          {CURRENCIES.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={LABEL_CLASS}>Sector (optional)</label>
+                        <input
+                          type="text"
+                          value={newSector}
+                          onChange={(e) => setNewSector(e.target.value)}
+                          placeholder="e.g. Technology"
+                          className={TEXT_INPUT_CLASS}
+                        />
+                      </div>
+                      <div>
+                        <label className={LABEL_CLASS}>Country (optional)</label>
+                        <input
+                          type="text"
+                          value={newCountry}
+                          onChange={(e) => setNewCountry(e.target.value)}
+                          placeholder="e.g. US"
+                          className={TEXT_INPUT_CLASS}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className={LABEL_CLASS}>Tax bucket</label>
+                      <select
+                        value={newTaxBucket}
+                        onChange={(e) => setNewTaxBucket(e.target.value)}
+                        className={`w-full cursor-pointer sm:w-1/2 ${TEXT_INPUT_CLASS}`}
+                      >
+                        {TAX_BUCKETS.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setNewAssetForRowId(null)}
+                        className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-gray-50 hover:shadow-md active:translate-y-0 active:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCreateAsset}
+                        disabled={creatingAsset}
+                        className="cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-blue-700 hover:shadow-md active:translate-y-0 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {creatingAsset ? "Creating…" : "Create & use this asset"}
+                      </button>
+                    </div>
                   </div>
                 )}
-                <div className={newAssetMode === "search" ? "col-span-2" : ""}>
-                  <label className={LABEL_CLASS}>Currency</label>
-                  <select
-                    value={newCurrency}
-                    onChange={(e) => setNewCurrency(e.target.value)}
-                    className={`cursor-pointer ${TEXT_INPUT_CLASS}`}
-                  >
-                    {CURRENCIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div>
+                    <label className={LABEL_CLASS}>Trade date</label>
+                    <input
+                      type="date"
+                      value={row.tradeDate}
+                      onChange={(e) => updateRow(row.id, { tradeDate: e.target.value })}
+                      required
+                      className={TEXT_INPUT_CLASS}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL_CLASS}>Quantity</label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      min="0"
+                      value={row.quantity}
+                      onChange={(e) => updateRow(row.id, { quantity: e.target.value })}
+                      placeholder="0.00"
+                      className={INPUT_CLASS}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL_CLASS}>
+                      Price{selectedAsset ? ` (${selectedAsset.currency})` : ""}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      min="0"
+                      value={row.price}
+                      onChange={(e) => updateRow(row.id, { price: e.target.value })}
+                      placeholder="0.00"
+                      className={INPUT_CLASS}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL_CLASS}>Fee</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={row.fee}
+                      onChange={(e) => updateRow(row.id, { fee: e.target.value })}
+                      placeholder="0.00"
+                      className={INPUT_CLASS}
+                    />
+                  </div>
                 </div>
+
+                {rowError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    Row {rowIndex + 1}: {rowError}
+                  </p>
+                )}
               </div>
+            );
+          })}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LABEL_CLASS}>Sector (optional)</label>
-                  <input
-                    type="text"
-                    value={newSector}
-                    onChange={(e) => setNewSector(e.target.value)}
-                    placeholder="e.g. Technology"
-                    className={TEXT_INPUT_CLASS}
-                  />
-                </div>
-                <div>
-                  <label className={LABEL_CLASS}>Country (optional)</label>
-                  <input
-                    type="text"
-                    value={newCountry}
-                    onChange={(e) => setNewCountry(e.target.value)}
-                    placeholder="e.g. US"
-                    className={TEXT_INPUT_CLASS}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className={LABEL_CLASS}>Tax bucket</label>
-                <select
-                  value={newTaxBucket}
-                  onChange={(e) => setNewTaxBucket(e.target.value)}
-                  className={`w-full cursor-pointer sm:w-1/2 ${TEXT_INPUT_CLASS}`}
-                >
-                  {TAX_BUCKETS.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowNewAssetForm(false)}
-                  className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-gray-50 hover:shadow-md active:translate-y-0 active:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCreateAsset}
-                  disabled={creatingAsset}
-                  className="cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-blue-700 hover:shadow-md active:translate-y-0 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {creatingAsset ? "Creating…" : "Create & use this asset"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className={LABEL_CLASS}>Trade date</label>
-            <input
-              type="date"
-              value={tradeDate}
-              onChange={(e) => setTradeDate(e.target.value)}
-              required
-              className={TEXT_INPUT_CLASS}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LABEL_CLASS}>Quantity (units/shares)</label>
-              <input
-                type="number"
-                step="0.000001"
-                min="0"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                required
-                placeholder="0.00"
-                className={INPUT_CLASS}
-              />
-            </div>
-            <div>
-              <label className={LABEL_CLASS}>
-                Price per unit{selectedAsset ? ` (${selectedAsset.currency})` : ""}
-              </label>
-              <input
-                type="number"
-                step="0.000001"
-                min="0"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                required
-                placeholder="0.00"
-                className={INPUT_CLASS}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className={LABEL_CLASS}>Fee (optional)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={fee}
-              onChange={(e) => setFee(e.target.value)}
-              placeholder="0.00"
-              className={`sm:w-1/2 ${INPUT_CLASS}`}
-            />
-          </div>
+          <button
+            type="button"
+            onClick={addRow}
+            className="cursor-pointer text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+          >
+            + Add another row
+          </button>
 
           <div className="flex justify-end gap-3 pt-2">
             <button
@@ -679,7 +872,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
               disabled={saving}
               className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-blue-700 hover:shadow-md active:translate-y-0 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm"
             >
-              {saving ? "Saving…" : "Save transaction"}
+              {saving ? "Saving…" : "Save transaction(s)"}
             </button>
           </div>
         </form>

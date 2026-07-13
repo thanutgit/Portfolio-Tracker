@@ -364,9 +364,9 @@ function HoldingsPageContent() {
     setSavingSnapshot(false);
   }
 
-  async function handleTransactionSaved() {
+  async function handleTransactionSaved(count: number) {
     setShowAddTransaction(false);
-    setToastMessage("Transaction saved.");
+    setToastMessage(count === 1 ? "1 transaction saved." : `${count} transactions saved.`);
     await loadHoldings();
   }
 

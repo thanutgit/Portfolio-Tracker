@@ -428,3 +428,21 @@ Keeps each price row's provider distinguishable for later review.
 ## D97 — Added currency auto-fill beyond what was asked (sector/country only)
 Guards against the real risk of a foreign stock being mistagged with
 THB currency, which would compound the existing multi-currency gap.
+
+## D98 — A fully blank row is silently skipped, not an error
+It's just a spare row the user left over, not a mistake.
+
+## D99 — "+ Add new asset" is one shared sub-form used by all rows, not duplicated per row
+Prevents N copies of the Finnhub search UI from appearing if there are
+N rows — tracks which row triggered it as its target instead.
+
+## D100 — A sell row's tax-holding check counts buy lots from the same batch, not just the database
+Matches the same reasoning as the oversell check — needs the whole
+batch's picture, not just one row at a time.
+
+## D101 — One combined confirm dialog with per-row numbering, instead of a separate dialog per row
+Shows the whole batch at a glance, instead of clicking through one
+dialog per row.
+
+## D102 — Widened the modal to `max-w-2xl`
+The original width was too narrow for the added per-row information.
