@@ -30,7 +30,9 @@ import {
   pnlColor,
 } from "@/lib/format";
 
-interface RefreshCryptoResponse {
+// Shared shape returned by both /api/refresh-crypto-prices and
+// /api/refresh-stock-prices.
+interface RefreshPricesResponse {
   updated: { symbol: string; price: number; as_of: string }[];
 }
 
@@ -407,7 +409,7 @@ function HoldingsPageContent() {
     try {
       const res = await fetch("/api/refresh-crypto-prices", { method: "POST" });
       if (!res.ok) return;
-      const json: RefreshCryptoResponse = await res.json();
+      const json: RefreshPricesResponse = await res.json();
       if (json.updated.length > 0) {
         setCryptoLastUpdated(json.updated[0].as_of);
         await loadHoldings(undefined, true);
@@ -429,6 +431,31 @@ function HoldingsPageContent() {
       refreshCryptoPrices();
     }, 60_000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  // Foreign-stock prices (Finnhub) — deliberately ONE-TIME per visit, not a
+  // repeating poll like crypto: Finnhub's free tier is 300 calls/day (vs.
+  // CoinGecko's much more generous limit), and stocks aren't traded 24/7 the
+  // way crypto is, so polling every 60s would burn the daily quota for no
+  // benefit. Same silent philosophy as crypto otherwise: no loading state,
+  // no banner, errors swallowed.
+  async function refreshStockPrices() {
+    try {
+      const res = await fetch("/api/refresh-stock-prices", { method: "POST" });
+      if (!res.ok) return;
+      const json: RefreshPricesResponse = await res.json();
+      if (json.updated.length > 0) {
+        await loadHoldings(undefined, true);
+      }
+    } catch {
+      // ignore — next page visit will retry
+    }
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshStockPrices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 

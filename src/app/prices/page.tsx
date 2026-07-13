@@ -10,12 +10,15 @@ import { PageHeader } from "@/components/PageHeader";
 import { RequireAuth } from "@/components/RequireAuth";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { hasAutoFetch } from "@/lib/coingecko";
+import { isForeignStock } from "@/lib/finnhub";
 
 interface AssetLite {
   id: string;
   symbol: string;
   name: string;
   currency: string;
+  asset_type: string;
+  market: string | null;
 }
 
 interface ParsedRow {
@@ -186,7 +189,9 @@ export default function PricesPage() {
   useEffect(() => {
     (async () => {
       setLoadingAssets(true);
-      const { data, error } = await supabase.from("assets").select("id, symbol, name, currency");
+      const { data, error } = await supabase
+        .from("assets")
+        .select("id, symbol, name, currency, asset_type, market");
       if (error) {
         setError(error.message);
       } else {
@@ -203,10 +208,14 @@ export default function PricesPage() {
     setSaveMessage(null);
   }
 
-  // Assets with their own auto-refresh (currently BTC/ETH via CoinGecko —
-  // see src/lib/coingecko.ts) are left out of the picker entirely, since a
-  // manual price here would just be redundant with the automated one.
-  const selectableAssets = useMemo(() => assets.filter((a) => !hasAutoFetch(a.symbol)), [assets]);
+  // Assets with their own auto-refresh — crypto via CoinGecko (D79) and now
+  // foreign stocks via Finnhub — are left out of the picker entirely, since
+  // a manual price here would just be redundant with (and could conflict
+  // with) the automated one.
+  const selectableAssets = useMemo(
+    () => assets.filter((a) => !hasAutoFetch(a.symbol) && !isForeignStock(a)),
+    [assets]
+  );
 
   function optionsForRow(rowId: string) {
     const takenElsewhere = new Set(

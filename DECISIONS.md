@@ -417,3 +417,14 @@ Fits the card's more compact text area better.
 ## D94 — No duplicate-name check when renaming a portfolio
 `portfolios.name` has never had a unique constraint in the schema —
 consistent with existing behavior.
+
+## D95 — Reused the existing `assets.market` column instead of a new column or hardcoded symbol list
+`market` can now genuinely be set from Finnhub's `exchange` field —
+more fitting than building something new.
+
+## D96 — `'finnhub'` is a separate `prices.source` value, not shared with crypto's `'api'`
+Keeps each price row's provider distinguishable for later review.
+
+## D97 — Added currency auto-fill beyond what was asked (sector/country only)
+Guards against the real risk of a foreign stock being mistagged with
+THB currency, which would compound the existing multi-currency gap.

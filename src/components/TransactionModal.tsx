@@ -34,15 +34,27 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
   const [showAssetList, setShowAssetList] = useState(false);
 
   const [showNewAssetForm, setShowNewAssetForm] = useState(false);
+  const [newAssetMode, setNewAssetMode] = useState<"manual" | "search">("manual");
   const [newSymbol, setNewSymbol] = useState("");
   const [newName, setNewName] = useState("");
   const [newAssetType, setNewAssetType] = useState("stock");
   const [newCurrency, setNewCurrency] = useState("THB");
   const [newSector, setNewSector] = useState("");
   const [newCountry, setNewCountry] = useState("");
+  const [newMarket, setNewMarket] = useState<string | null>(null);
   const [newTaxBucket, setNewTaxBucket] = useState("normal");
   const [creatingAsset, setCreatingAsset] = useState(false);
   const [newAssetError, setNewAssetError] = useState<string | null>(null);
+
+  // Finnhub search mode (foreign stocks only) — see src/lib/finnhub.ts and
+  // the two server routes it calls (finnhub-search, finnhub-profile).
+  const [stockSearchQuery, setStockSearchQuery] = useState("");
+  const [stockSearchResults, setStockSearchResults] = useState<
+    { symbol: string; description: string }[]
+  >([]);
+  const [searchingStocks, setSearchingStocks] = useState(false);
+  const [stockSearchError, setStockSearchError] = useState<string | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   const [tradeDate, setTradeDate] = useState(today());
   const [quantity, setQuantity] = useState("");
@@ -57,7 +69,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     (async () => {
       const { data, error } = await supabase
         .from("assets")
-        .select("id, symbol, name, asset_type, currency, sector, country, tax_bucket")
+        .select("id, symbol, name, asset_type, currency, sector, country, tax_bucket, market")
         .order("symbol");
       if (error) {
         setError(error.message);
@@ -88,10 +100,77 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     setNewCurrency("THB");
     setNewSector("");
     setNewCountry("");
+    setNewMarket(null);
     setNewTaxBucket("normal");
     setNewAssetError(null);
+    setNewAssetMode("manual");
+    setStockSearchQuery("");
+    setStockSearchResults([]);
+    setStockSearchError(null);
     setShowNewAssetForm(true);
     setShowAssetList(false);
+  }
+
+  // Debounced Finnhub symbol search — waits ~400ms after the user stops
+  // typing before hitting the API, so fast typing doesn't fire a request
+  // per keystroke.
+  useEffect(() => {
+    if (newAssetMode !== "search" || !stockSearchQuery.trim()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStockSearchResults([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      setSearchingStocks(true);
+      setStockSearchError(null);
+      try {
+        const res = await fetch(
+          `/api/finnhub-search?q=${encodeURIComponent(stockSearchQuery.trim())}`
+        );
+        const json = await res.json();
+        if (!res.ok) {
+          setStockSearchError(json.error ?? "Search failed.");
+          setStockSearchResults([]);
+        } else {
+          setStockSearchResults(json.results ?? []);
+        }
+      } catch {
+        setStockSearchError("Couldn't reach the search service.");
+        setStockSearchResults([]);
+      } finally {
+        setSearchingStocks(false);
+      }
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [stockSearchQuery, newAssetMode]);
+
+  // Selecting a search result auto-fills symbol/name immediately, then
+  // fetches the company profile (sector/country/currency/market) once —
+  // not per search keystroke. Every auto-filled field stays a normal,
+  // editable input afterward; a missing/empty profile just leaves those
+  // blank for manual entry instead of erroring.
+  async function selectStockResult(result: { symbol: string; description: string }) {
+    setNewSymbol(result.symbol);
+    setNewName(result.description);
+    setNewAssetType("stock");
+    setStockSearchQuery("");
+    setStockSearchResults([]);
+    setLoadingProfile(true);
+    try {
+      const res = await fetch(`/api/finnhub-profile?symbol=${encodeURIComponent(result.symbol)}`);
+      const json = await res.json();
+      if (res.ok) {
+        if (json.sector) setNewSector(json.sector);
+        if (json.country) setNewCountry(json.country);
+        if (json.currency && CURRENCIES.includes(json.currency)) setNewCurrency(json.currency);
+        setNewMarket(json.market ?? null);
+      }
+    } catch {
+      // Ignore — sector/country/currency/market just stay unfilled and the
+      // user can enter them manually; the asset can still be created.
+    } finally {
+      setLoadingProfile(false);
+    }
   }
 
   async function handleCreateAsset() {
@@ -105,6 +184,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
       sector: newSector,
       country: newCountry,
       tax_bucket: newTaxBucket,
+      market: newMarket,
     });
     if (error || !data) {
       setNewAssetError(error ?? "Failed to create asset.");
@@ -349,6 +429,74 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
                 </div>
               )}
 
+              {/* Manual entry (Thai funds etc.) vs. Finnhub search (foreign
+                  stocks) — same neutral-blue toggle treatment as Buy/Sell,
+                  not colored green/red. */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewAssetMode("manual")}
+                  className={`cursor-pointer rounded-lg border px-3 py-2 text-xs font-medium transition-all duration-150 ${
+                    newAssetMode === "manual"
+                      ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:border-blue-400/40 dark:bg-blue-400/10 dark:text-blue-400"
+                      : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  Manual entry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewAssetMode("search")}
+                  className={`cursor-pointer rounded-lg border px-3 py-2 text-xs font-medium transition-all duration-150 ${
+                    newAssetMode === "search"
+                      ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:border-blue-400/40 dark:bg-blue-400/10 dark:text-blue-400"
+                      : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  Search stock (Finnhub)
+                </button>
+              </div>
+
+              {newAssetMode === "search" && (
+                <div className="relative">
+                  <label className={LABEL_CLASS}>Search by company name or ticker</label>
+                  <input
+                    type="text"
+                    value={stockSearchQuery}
+                    onChange={(e) => setStockSearchQuery(e.target.value)}
+                    placeholder="e.g. Apple or AAPL"
+                    className={TEXT_INPUT_CLASS}
+                  />
+                  {searchingStocks && (
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Searching…</p>
+                  )}
+                  {stockSearchError && (
+                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">{stockSearchError}</p>
+                  )}
+                  {stockSearchResults.length > 0 && (
+                    <ul className="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                      {stockSearchResults.map((r) => (
+                        <li key={r.symbol}>
+                          <button
+                            type="button"
+                            onClick={() => selectStockResult(r)}
+                            className="block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+                          >
+                            <span className="font-medium">{r.symbol}</span>{" "}
+                            <span className="text-gray-500 dark:text-gray-400">{r.description}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {loadingProfile && (
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Loading company details…
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={LABEL_CLASS}>Symbol</label>
@@ -373,21 +521,23 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LABEL_CLASS}>Asset type</label>
-                  <select
-                    value={newAssetType}
-                    onChange={(e) => setNewAssetType(e.target.value)}
-                    className={`cursor-pointer ${TEXT_INPUT_CLASS}`}
-                  >
-                    {ASSET_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
+                {newAssetMode === "manual" && (
+                  <div>
+                    <label className={LABEL_CLASS}>Asset type</label>
+                    <select
+                      value={newAssetType}
+                      onChange={(e) => setNewAssetType(e.target.value)}
+                      className={`cursor-pointer ${TEXT_INPUT_CLASS}`}
+                    >
+                      {ASSET_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div className={newAssetMode === "search" ? "col-span-2" : ""}>
                   <label className={LABEL_CLASS}>Currency</label>
                   <select
                     value={newCurrency}

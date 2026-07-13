@@ -64,4 +64,9 @@ export interface Asset {
   sector: string | null;
   country: string | null;
   tax_bucket: string;
+  // Exchange/market code (e.g. "NASDAQ", "NYSE") — populated automatically
+  // when an asset is created via the Finnhub search flow (see
+  // src/lib/finnhub.ts's isForeignStock()); null for everything else,
+  // including Thai funds and any asset created via manual entry.
+  market: string | null;
 }

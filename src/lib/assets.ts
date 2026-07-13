@@ -13,6 +13,10 @@ export interface NewAssetInput {
   sector: string;
   country: string;
   tax_bucket: string;
+  // Exchange/market code, e.g. "NASDAQ" — only ever set via the Finnhub
+  // search flow in TransactionModal; the manual-entry path never collects
+  // this (no UI field for it), so it stays null there, same as before.
+  market?: string | null;
 }
 
 // The schema's unique constraint is on (symbol, market) — forms in this app
@@ -64,8 +68,9 @@ export async function createAsset(
       sector: input.sector.trim() || null,
       country: input.country.trim() || null,
       tax_bucket: input.tax_bucket,
+      market: input.market?.trim() || null,
     })
-    .select("id, symbol, name, asset_type, currency, sector, country, tax_bucket")
+    .select("id, symbol, name, asset_type, currency, sector, country, tax_bucket, market")
     .single();
   if (error) {
     if (error.code === "23505" || /duplicate key/i.test(error.message)) {

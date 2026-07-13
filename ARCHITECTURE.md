@@ -89,6 +89,12 @@ guards against duplicate inserts).
   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
 - SECRET key bypasses RLS — server-only, never in a client bundle, never in git.
 - Secrets live in `.env.local` (gitignored). No key values in committed docs.
+- `FINNHUB_API_KEY` (plain env var, deliberately **not** `NEXT_PUBLIC_`) —
+  used only inside the three server-side Finnhub routes (see "Foreign
+  stock search + price refresh" below), never read client-side. Must be
+  set in `.env.local` for local dev and in Vercel's project settings
+  (Settings → Environment Variables) for production — these are two
+  separate places, both need it.
 - **Supabase Auth (email/password) is live** — every page except
   `/login`/`/signup` is protected by the `<RequireAuth>` component (see
   "Route protection" below); logged-out visitors are redirected to
@@ -307,6 +313,70 @@ CoinGecko id are refreshed (see `COINGECKO_IDS`, now shared from
 page to exclude these assets from its manual-entry picker); other
 `asset_type = 'crypto'` assets are reported as skipped, not silently ignored.
 Thai funds have no public price API and stay manual. See DECISIONS.md.
+
+## Foreign stock search + price refresh (Finnhub)
+Server-side only — `FINNHUB_API_KEY` (plain env var, **not**
+`NEXT_PUBLIC_`) never reaches the client. Three routes:
+- `GET /api/finnhub-search?q=` — proxies Finnhub's `/search`, filtered to
+  `type === "Common Stock"` (Finnhub's search also returns ETPs/mutual
+  funds/etc., out of scope here) and capped to 10 results. Called from
+  `TransactionModal`'s inline "+ Add new asset" form, in a new "Search
+  stock (Finnhub)" mode alongside the original "Manual entry" mode
+  (unchanged, still used for Thai funds) — debounced ~400ms after the user
+  stops typing.
+- `GET /api/finnhub-profile?symbol=` — proxies `/stock/profile2`, called
+  once, right after a search result is picked (not per keystroke), to
+  auto-fill sector (`finnhubIndustry`), country, currency, and market
+  (`exchange`) in the new-asset form. Every auto-filled field stays a
+  normal, editable input afterward. Finnhub returns `{}` (200 OK, not an
+  error) for a symbol with no profile data — the form just leaves those
+  fields blank for manual entry rather than erroring.
+- `POST /api/refresh-stock-prices` — mirrors `/api/refresh-crypto-prices`'s
+  shape, but fetches `/quote` (no batch endpoint, unlike CoinGecko) for
+  every eligible held stock in parallel and inserts into `prices` with
+  `source = 'finnhub'`. Called **once per Holdings page visit** (on mount
+  and on portfolio switch), not on a repeating interval like crypto's 60s
+  poll — Finnhub's free tier is 300 calls/day (vs. CoinGecko's much
+  higher limit), and unlike crypto, stocks aren't traded 24/7, so a
+  repeating poll would burn the daily quota for no benefit. Silent
+  otherwise (no loading state, no banner), same as crypto.
+
+**Which assets are eligible** (`isForeignStock()` in `src/lib/finnhub.ts`):
+`asset_type === 'stock' && market` is truthy. This reuses the existing
+`assets.market` column — present since `0001_init.sql` ("SET, mai, NYSE,
+NASDAQ, null") but never actually populated by any form until this
+feature — rather than adding a new column or a hardcoded symbol lookup
+(crypto's approach, `COINGECKO_IDS`, which doesn't scale to the thousands
+of possible stock tickers). Assets created via the old manual-entry path
+(Thai funds, or a hand-typed foreign stock) leave `market` null and are
+correctly excluded; only assets created via the Finnhub search flow (which
+sets `market` from the profile's `exchange` field) become eligible. See
+DECISIONS.md for why this was chosen over a new column.
+
+`prices.source = 'finnhub'` is a new, distinct value from crypto's
+`'api'` (migration `migrations/0011_add_finnhub_price_source.sql`, **not
+yet applied** — see the file and DECISIONS.md) — kept separate so each
+row's actual provider stays identifiable, rather than conflating two
+unrelated external APIs under one generic label.
+
+The Prices page's manual-entry picker excludes Finnhub-eligible assets
+the same way it already excluded crypto (D79) — `selectableAssets` now
+filters out both `hasAutoFetch()` (crypto) and `isForeignStock()`
+(Finnhub) results, for the same reason: avoid a manual price and an
+auto-fetched one conflicting over the same asset.
+
+**Important caveat — multi-currency totals are not handled anywhere in
+this app yet** (see ROADMAP.md Phase 3, DECISIONS.md): every portfolio
+total (Overview's per-portfolio value, Holdings' "Total current value",
+etc.) is a plain numeric sum of `market_value` across holdings, with no
+FX conversion. Until now this was harmless because every real asset was
+THB. Foreign stocks fetched via Finnhub are priced in their own currency
+(commonly USD) — holding one alongside THB assets in the same portfolio
+will make that portfolio's aggregate totals numerically wrong (adding
+USD and THB figures as if they were the same unit), not just imprecise.
+This isn't fixed as part of this feature (a real FX layer is a separate,
+larger piece of work) — flagged here so it's not mistaken for a bug
+report later.
 
 ## Manual price entry (Prices page)
 `src/app/prices/page.tsx` has two entry modes, switched via a tab (no route

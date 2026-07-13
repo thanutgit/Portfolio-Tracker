@@ -1961,3 +1961,92 @@
   `h-7 w-7`, to fit inline next to compact card text; no duplicate-name
   check, matching the schema's existing lack of a uniqueness
   constraint on `portfolios.name`).
+
+## 2026-07-13 — Foreign stock search + auto-fetch prices (Finnhub)
+- **New migration, NOT applied yet**:
+  `migrations/0011_add_finnhub_price_source.sql` — adds `'finnhub'` as
+  an allowed `prices.source` value, alongside the existing
+  `'manual'`/`'csv'`/`'api'` (the last of which stays CoinGecko's,
+  kept distinct rather than reused, so each row's actual provider
+  stays identifiable later).
+- **New env var**: `FINNHUB_API_KEY` (plain, **not** `NEXT_PUBLIC_`) —
+  read only inside the three new server routes below, never sent to
+  the client. Needs to be added in two separate places: `.env.local`
+  locally, and Vercel project Settings → Environment Variables for
+  production. **Could not update `.env.local.example`** — the
+  project's `block-env.mjs` hook blocks this exact filename (its
+  template-detection regex recognizes `.env.example`/`.env.sample`/
+  `.env.template` but not `.env.local.example`'s two-suffix form), so
+  add this line there by hand:
+  `FINNHUB_API_KEY=your_finnhub_api_key_here`.
+- **Part 1 — symbol search when adding a new asset**: `TransactionModal`'s
+  inline "+ Add new asset" form gained a "Manual entry" / "Search stock
+  (Finnhub)" toggle (manual mode is exactly the pre-existing form,
+  unchanged — still what Thai funds use). Search mode debounces ~400ms
+  after typing stops, calls the new `GET /api/finnhub-search` route
+  (filtered to `type === "Common Stock"`, capped at 10 results), and
+  selecting a result auto-fills symbol/name and locks asset type to
+  `stock` (no dropdown shown in this mode, since it's always stock).
+- **Part 4 — sector/country/currency/market auto-fill**: selecting a
+  search result also calls the new `GET /api/finnhub-profile` route
+  once (not per keystroke) and fills sector (`finnhubIndustry`),
+  country, currency (only if Finnhub's value is one of this app's
+  supported currencies), and market (`exchange`) — every field stays a
+  normal editable input afterward, and a symbol with no profile data
+  (Finnhub returns `{}`, not an error) just leaves those fields blank
+  for manual entry, per the ask.
+- **Part 2 — one-time price refresh on Holdings load**: new
+  `POST /api/refresh-stock-prices` route, mirroring
+  `/api/refresh-crypto-prices`'s shape but calling Finnhub's `/quote`
+  (no batch endpoint) per eligible held stock in parallel, capped at
+  50 symbols as a safety limit. Called once per Holdings page
+  visit/portfolio switch — **not** a repeating poll like crypto's 60s
+  interval, since Finnhub's free tier is 300 calls/day and stocks
+  aren't traded 24/7, so polling would waste the quota. Silent, same
+  as crypto (no loading state, no banner).
+- **Eligibility signal — reused the existing `assets.market` column**,
+  not a new one: `isForeignStock()` (`src/lib/finnhub.ts`) is just
+  `asset_type === 'stock' && market` truthy. `market` has existed in
+  the schema since `0001_init.sql` but no form ever populated it before
+  this feature (confirmed via a comment already in `src/lib/assets.ts`)
+  — assets created via the old manual path (Thai funds, or a
+  hand-typed foreign stock) leave it null and are correctly excluded;
+  only assets created through the new search flow (which sets `market`
+  from the profile's `exchange`) become eligible. Added `market` to
+  the `Asset` type, `NewAssetInput`, and every `assets` query that
+  types its result as `Asset[]`/`AssetLite` (Assets page, Prices page,
+  TransactionModal) for consistency.
+- Prices page's manual-entry picker now also excludes Finnhub-eligible
+  foreign stocks from `selectableAssets`, alongside the existing
+  crypto exclusion (D79) — same reasoning: avoid a manual price
+  conflicting with an auto-fetched one.
+- **Found and fixed, unrelated to this feature**: `migrations/README.md`
+  had been overwritten with the top-level project `README.md`'s
+  content at some point outside this session (confirmed both files
+  existed with near-identical line counts) — asked the user how to
+  proceed rather than guessing, then reconstructed the migrations-
+  specific doc (rules + the 0001–0011 table) from this session's own
+  history, leaving the actual root `README.md` untouched.
+- **Important caveat, flagged prominently (not fixed as part of this
+  feature)**: this app has no FX/multi-currency handling anywhere
+  (ROADMAP.md Phase 3, deferred) — every portfolio total is a plain
+  numeric sum of `market_value` with no currency conversion. That was
+  harmless while every real asset was THB; a foreign stock fetched via
+  Finnhub is priced in its own currency (commonly USD), so holding one
+  alongside THB assets will make that portfolio's aggregate totals
+  numerically wrong, not just imprecise. Documented in ARCHITECTURE.md
+  so it isn't mistaken for a bug later.
+- Verified: `npm run lint` and `npm run build` both clean; curled all
+  three new routes directly (no `FINNHUB_API_KEY` set yet) and
+  confirmed each correctly returns `{"error":"FINNHUB_API_KEY is not
+  configured."}` instead of crashing. Could not test the actual live
+  Finnhub search/profile/quote calls — no API key configured yet, and
+  every app page requires login (Phase 7), which I don't have
+  credentials for.
+- Design decisions worth logging in DECISIONS.md (not yet saved): see
+  the response for this round (reusing `assets.market` instead of a
+  new column or a hardcoded symbol list; `'finnhub'` as a distinct
+  `prices.source` value instead of reusing `'api'`; auto-filling
+  currency in addition to the asked-for sector/country, given the real
+  risk of a foreign stock being left mistagged as THB; one-time
+  refresh instead of a poll, matching Finnhub's tighter quota).
