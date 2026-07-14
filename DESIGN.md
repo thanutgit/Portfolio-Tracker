@@ -91,7 +91,15 @@ glowing trend line), but still precise and trustworthy with real money.
 
 ## Data display rules
 - Money values: always show currency, consistent decimal places, thousand
-  separators (e.g. ฿12,450.00).
+  separators (e.g. ฿12,450.00). **Exception: per-unit prices** (Avg Cost,
+  Last Price, a transaction's Price) drop trailing zeros instead — a NAV
+  or share price like ฿13.0219 needs its exact decimals visible, and
+  forcing a fixed 2dp would either hide precision (rounding to ฿13.02) or
+  pad meaningless zeros onto a whole number (฿14.00 instead of ฿14).
+  Thousand separators still apply (`formatUnitPrice()` in `src/lib/
+  format.ts`). Aggregate money — Market Value, Total Return, P&L,
+  dividend amounts — keeps the fixed 2dp rule above unchanged, since a
+  total's trailing zero is still meaningful (฿100.00, not ฿100).
 - Gains/losses: color (green/red) AND a +/− sign — never color alone
   (accessibility). This rule is unaffected by the dark/blue direction change.
 - Empty states get a simple, calm message + a clear next action.

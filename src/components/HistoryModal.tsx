@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { DividendTransaction, AssetTransaction } from "@/lib/types";
-import { formatMoney, formatQuantity } from "@/lib/format";
+import { formatMoney, formatQuantity, formatUnitPrice } from "@/lib/format";
 import { DIFF_WARNING_PCT } from "@/lib/constants";
 import { wouldCauseNegativeHolding } from "@/lib/transactions";
 import { useConfirm } from "@/lib/hooks/useConfirm";
@@ -215,7 +215,7 @@ export function HistoryModal({
       : "";
     const message =
       `Update this transaction to: ${verb} ${formatQuantity(quantityNum)} unit${quantityNum === 1 ? "" : "s"} of ` +
-      `${symbol} at ${formatMoney(priceNum, currency)} per unit on ${txnDate} — ` +
+      `${symbol} at ${formatUnitPrice(priceNum, currency)} per unit on ${txnDate} — ` +
       `total ${formatMoney(total, currency)} (incl. fee).${warningLine}`;
 
     const confirmed = await confirm(message, {
@@ -262,7 +262,7 @@ export function HistoryModal({
     const verb = t.type === "buy" ? "buy" : "sell";
     const qtyNum = Number(t.quantity);
     const confirmed = await confirm(
-      `Delete this ${verb} of ${formatQuantity(qtyNum)} unit${qtyNum === 1 ? "" : "s"} at ${formatMoney(Number(t.price), currency)} per unit on ${t.trade_date}? This can't be undone.${warningLine}`,
+      `Delete this ${verb} of ${formatQuantity(qtyNum)} unit${qtyNum === 1 ? "" : "s"} at ${formatUnitPrice(Number(t.price), currency)} per unit on ${t.trade_date}? This can't be undone.${warningLine}`,
       { title: "Delete transaction?", confirmLabel: "Delete", variant: "danger" }
     );
     if (!confirmed) return;
@@ -539,7 +539,7 @@ export function HistoryModal({
                             {formatQuantity(Number(t.quantity))}
                           </td>
                           <td className="px-3 py-2 text-right font-mono tabular-nums">
-                            {formatMoney(Number(t.price), currency)}
+                            {formatUnitPrice(Number(t.price), currency)}
                           </td>
                           <td className="px-2 py-2">
                             <div className="flex items-center justify-end gap-2">

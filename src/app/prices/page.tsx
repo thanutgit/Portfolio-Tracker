@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { formatMoney, formatPercent } from "@/lib/format";
+import { formatPercent, formatUnitPrice } from "@/lib/format";
 import { DIFF_WARNING_PCT } from "@/lib/constants";
 import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -597,10 +597,10 @@ export default function PricesPage() {
                               <td className="px-4 py-3 text-right font-mono tabular-nums">
                                 {r.oldPrice === null
                                   ? "—"
-                                  : formatMoney(r.oldPrice, r.currency ?? "THB")}
+                                  : formatUnitPrice(r.oldPrice, r.currency ?? "THB")}
                               </td>
                               <td className="px-4 py-3 text-right font-mono tabular-nums">
-                                {formatMoney(r.price as number, r.currency ?? "THB")}
+                                {formatUnitPrice(r.price as number, r.currency ?? "THB")}
                               </td>
                               <td className="px-4 py-3 text-right font-mono tabular-nums">
                                 {r.diffPct === null ? "—" : formatPercent(r.diffPct)}

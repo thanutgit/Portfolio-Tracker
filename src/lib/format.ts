@@ -22,6 +22,24 @@ export function formatMoney(value: number, currency = "THB") {
   return `${sign}${symbolFor(currency)}${formatAmount(value)}`;
 }
 
+// For a per-unit price (Avg Cost, Last Price, a transaction's Price), not
+// an aggregate money amount — trailing zeros are dropped but a
+// significant decimal (e.g. 13.0219) is kept in full, rather than forcing
+// a fixed 2 decimal places like formatMoney. Deliberately NOT used for
+// totals (Market Value, Total Return, P&L, dividend amounts) — those stay
+// on formatMoney's fixed 2dp, since a total's trailing zero is still
+// meaningful (฿100.00, not ฿100).
+export function formatUnitPrice(value: number, currency = "THB") {
+  const sign = value < 0 ? "-" : "";
+  const trimmed = Number(Math.abs(value)).toString();
+  const decimals = trimmed.includes(".") ? trimmed.split(".")[1].length : 0;
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(Math.abs(value));
+  return `${sign}${symbolFor(currency)}${formatted}`;
+}
+
 export function formatSigned(value: number, currency = "THB") {
   const sign = value > 0 ? "+" : value < 0 ? "-" : "";
   return `${sign}${symbolFor(currency)}${formatAmount(value)}`;

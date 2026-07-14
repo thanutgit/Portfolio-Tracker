@@ -127,7 +127,8 @@
       "Bash(curl -s \"http://localhost:3000/api/finnhub-search?q=apple\")",
       "Bash(curl -s \"http://localhost:3000/api/finnhub-profile?symbol=AAPL\")",
       "Bash(curl -s -X POST \"http://localhost:3000/api/refresh-stock-prices\")",
-      "Bash(taskkill //PID 46888 //F)"
+      "Bash(taskkill //PID 46888 //F)",
+      "Bash(node \"C:/Users/Thanu/AppData/Local/Temp/claude/c--Users-Thanu-Desktop-PP-Claude-Portfolio-Tracker/1655e6ee-f29c-4c3c-ac20-d8714af6f6c1/scratchpad/check-format-unit-price.mjs\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\Thanu\\Desktop\\PP\\Claude\\Portfolio Tracker\\src\\app\\api"

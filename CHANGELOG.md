@@ -2174,3 +2174,39 @@
   pattern; no in-grid keyboard navigation; calendar month/weekday
   labels stay in English while only the typed date format follows the
   Thai DD/MM/YYYY convention).
+
+## 2026-07-14 — Per-unit prices drop trailing zeros (Avg Cost, Last Price, transaction Price)
+- New `formatUnitPrice()` in `src/lib/format.ts` — trims trailing
+  zeros while keeping every significant decimal (`Number(value)
+  .toString()` to get the canonical trimmed form, then re-formats
+  with `Intl.NumberFormat` using exactly that many decimal places, so
+  thousand separators still apply). Deliberately not `toFixed(N)`,
+  which forces a fixed decimal count regardless of what's actually
+  significant.
+- Applied only to genuine **per-unit prices**, left every aggregate
+  money value (Market Value, Total Return, P&L, dividend amounts,
+  buy/sell amounts) on the existing fixed-2dp `formatMoney()`
+  unchanged — audited every `formatMoney(` call site in `src/`
+  (19 total) to classify each one before touching anything.
+  Changed (8 call sites, 4 files): Holdings table's Avg Cost and Last
+  Price columns; `HistoryModal`'s Transactions-tab Price column and
+  its two "at X per unit" preview/delete-confirm messages (the
+  accompanying "total Y" phrase in each stays `formatMoney`);
+  `TransactionModal`'s "at X per unit" batch preview line (same
+  total-stays-unchanged split); Prices page's old-price/new-price
+  preview columns. Left untouched: dividend amounts (recorded as a
+  gross total, not a per-unit price, despite living in the same
+  `transactions.price` column), tax withheld amounts, and every
+  portfolio/holding-level total.
+- DESIGN.md's "Data display rules" updated with the new per-unit-price
+  exception to the "consistent decimal places" rule, and why aggregate
+  totals don't get the same treatment (a total's trailing zero is
+  still meaningful — ฿100.00, not ฿100).
+- Verified via `npm run lint` and `npm run build` (both clean), plus a
+  standalone script running `formatUnitPrice()` against all 5 of the
+  ask's exact examples (13.0219 → ฿13.0219, 13.02150 → ฿13.0215,
+  12.1900 → ฿12.19, 15.82 → ฿15.82, 14.0000 → ฿14) — all matched —
+  plus thousand-separator, negative, zero, and string-input coercion
+  cases. Could not visually verify the rendered tables live — every
+  page showing these values is behind `<RequireAuth>` (Phase 7), and I
+  don't have login credentials for the real account.

@@ -6,7 +6,7 @@ import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
 import { ASSET_TYPES, CURRENCIES, TAX_BUCKETS, createAsset } from "@/lib/assets";
-import { formatMoney, formatQuantity } from "@/lib/format";
+import { formatMoney, formatQuantity, formatUnitPrice } from "@/lib/format";
 import { computeTaxHoldingStatus } from "@/lib/taxHolding";
 import type { Asset } from "@/lib/types";
 
@@ -424,7 +424,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
       const total = qty * priceNum + feeNum;
       const verb = row.type === "buy" ? "Buy" : "Sell";
       rowMessages.push(
-        `${index + 1}. ${verb} ${formatQuantity(qty)} unit${qty === 1 ? "" : "s"} of ${row.asset.symbol} at ${formatMoney(priceNum, row.asset.currency)} per unit — total ${formatMoney(total, row.asset.currency)} (incl. fee).`
+        `${index + 1}. ${verb} ${formatQuantity(qty)} unit${qty === 1 ? "" : "s"} of ${row.asset.symbol} at ${formatUnitPrice(priceNum, row.asset.currency)} per unit — total ${formatMoney(total, row.asset.currency)} (incl. fee).`
       );
 
       const currentQty = runningQty.get(row.asset.id) ?? 0;

@@ -27,6 +27,7 @@ import {
   formatPercent,
   formatQuantity,
   formatSigned,
+  formatUnitPrice,
   pnlColor,
 } from "@/lib/format";
 
@@ -684,12 +685,12 @@ function HoldingsPageContent() {
                               {formatQuantity(Number(h.quantity))}
                             </td>
                             <td className="whitespace-nowrap px-3 py-3 text-right font-mono text-xs tabular-nums">
-                              {formatMoney(Number(h.avg_cost), h.currency)}
+                              {formatUnitPrice(Number(h.avg_cost), h.currency)}
                             </td>
                             <td className="whitespace-nowrap px-3 py-3 text-right font-mono text-xs tabular-nums">
                               {h.last_price === null
                                 ? "—"
-                                : formatMoney(Number(h.last_price), h.currency)}
+                                : formatUnitPrice(Number(h.last_price), h.currency)}
                             </td>
                             <td className="whitespace-nowrap px-3 py-3 text-right font-mono text-xs tabular-nums">
                               {h.market_value === null
