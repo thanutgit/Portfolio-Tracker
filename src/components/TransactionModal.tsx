@@ -6,6 +6,7 @@ import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
 import { ASSET_TYPES, CURRENCIES, TAX_BUCKETS, createAsset } from "@/lib/assets";
+import { CRYPTO_SEARCH_ENTRIES } from "@/lib/coingecko";
 import { formatMoney, formatQuantity, formatUnitPrice } from "@/lib/format";
 import { computeTaxHoldingStatus } from "@/lib/taxHolding";
 import type { Asset } from "@/lib/types";
@@ -25,6 +26,14 @@ const INPUT_CLASS =
 const TEXT_INPUT_CLASS =
   "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950";
 const LABEL_CLASS = "mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300";
+
+// "Search asset" mode's single result list mixes two sources — Finnhub
+// stock search and the small, hardcoded crypto entry list (CRYPTO_SEARCH_
+// ENTRIES) — so each result carries which one it came from and only the
+// fields that source can actually provide.
+type SearchResult =
+  | { type: "stock"; symbol: string; description: string; verified?: boolean }
+  | { type: "crypto"; symbol: string; name: string; coingeckoId: string };
 
 function TrashIcon() {
   return (
@@ -175,12 +184,11 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
   // Finnhub search mode (foreign stocks only) — see src/lib/finnhub.ts and
   // the two server routes it calls (finnhub-search, finnhub-profile).
   const [stockSearchQuery, setStockSearchQuery] = useState("");
-  const [stockSearchResults, setStockSearchResults] = useState<
-    { symbol: string; description: string; verified?: boolean }[]
-  >([]);
+  const [stockSearchResults, setStockSearchResults] = useState<SearchResult[]>([]);
   const [searchingStocks, setSearchingStocks] = useState(false);
   const [stockSearchError, setStockSearchError] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [profileMissingSectorCountry, setProfileMissingSectorCountry] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -236,35 +244,50 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     setStockSearchQuery("");
     setStockSearchResults([]);
     setStockSearchError(null);
+    setProfileMissingSectorCountry(false);
     setNewAssetForRowId(rowId);
   }
 
-  // Debounced Finnhub symbol search — waits ~400ms after the user stops
-  // typing before hitting the API, so fast typing doesn't fire a request
-  // per keystroke.
+  // "Search asset" mixes two sources: the small, hardcoded crypto entry
+  // list (matched instantly, client-side, no API call — see
+  // CRYPTO_SEARCH_ENTRIES) and Finnhub's stock /search (debounced ~400ms
+  // after the user stops typing, so fast typing doesn't fire a request per
+  // keystroke). Crypto matches show immediately; Finnhub results are
+  // merged in once the debounced fetch resolves.
   useEffect(() => {
-    if (newAssetMode !== "search" || !stockSearchQuery.trim()) {
+    const query = stockSearchQuery.trim();
+    if (newAssetMode !== "search" || !query) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStockSearchResults([]);
       return;
     }
+    const q = query.toLowerCase();
+    const cryptoMatches: SearchResult[] = CRYPTO_SEARCH_ENTRIES.filter(
+      (c) => c.symbol.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
+    ).map((c) => ({ type: "crypto", symbol: c.symbol, name: c.name, coingeckoId: c.coingeckoId }));
+    setStockSearchResults(cryptoMatches);
+
     const handle = setTimeout(async () => {
       setSearchingStocks(true);
       setStockSearchError(null);
       try {
-        const res = await fetch(
-          `/api/finnhub-search?q=${encodeURIComponent(stockSearchQuery.trim())}`
-        );
+        const res = await fetch(`/api/finnhub-search?q=${encodeURIComponent(query)}`);
         const json = await res.json();
         if (!res.ok) {
           setStockSearchError(json.error ?? "Search failed.");
-          setStockSearchResults([]);
+          setStockSearchResults(cryptoMatches);
         } else {
-          setStockSearchResults(json.results ?? []);
+          const stockResults: SearchResult[] = (json.results ?? []).map(
+            (r: { symbol: string; description: string; verified?: boolean }) => ({
+              type: "stock" as const,
+              ...r,
+            })
+          );
+          setStockSearchResults([...cryptoMatches, ...stockResults]);
         }
       } catch {
         setStockSearchError("Couldn't reach the search service.");
-        setStockSearchResults([]);
+        setStockSearchResults(cryptoMatches);
       } finally {
         setSearchingStocks(false);
       }
@@ -273,24 +296,45 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
   }, [stockSearchQuery, newAssetMode]);
 
   // Selecting a search result auto-fills symbol/name immediately, then
-  // fetches the company profile (sector/country/currency/market) once —
+  // fetches a profile (sector/country/currency/market for stocks; sector
+  // only for crypto, since country/currency are fixed — see below) once,
   // not per search keystroke. Every auto-filled field stays a normal,
   // editable input afterward; a missing/empty profile just leaves those
   // blank for manual entry instead of erroring.
-  async function selectStockResult(result: {
-    symbol: string;
-    description: string;
-    verified?: boolean;
-  }) {
+  async function selectSearchResult(result: SearchResult) {
     setNewSymbol(result.symbol);
+    setStockSearchQuery("");
+    setStockSearchResults([]);
+    setProfileMissingSectorCountry(false);
+    setLoadingProfile(true);
+
+    if (result.type === "crypto") {
+      // Crypto has no registered country and this app prices it directly
+      // in THB (see /api/refresh-crypto-prices) — only Sector is worth
+      // fetching, Country/Currency are fixed rather than looked up.
+      setNewName(result.name);
+      setNewAssetType("crypto");
+      setNewCountry("Global");
+      setNewCurrency("THB");
+      try {
+        const res = await fetch(
+          `/api/coingecko-profile?id=${encodeURIComponent(result.coingeckoId)}`
+        );
+        const json = await res.json();
+        if (res.ok && json.sector) setNewSector(json.sector);
+      } catch {
+        // Ignore — sector just stays unfilled for manual entry.
+      } finally {
+        setLoadingProfile(false);
+      }
+      return;
+    }
+
     // The "verified via direct lookup" fallback has no real company name —
     // that description is a UI label, not data, so leave Name blank for
     // manual entry instead of writing the label into it.
     setNewName(result.verified ? "" : result.description);
     setNewAssetType("stock");
-    setStockSearchQuery("");
-    setStockSearchResults([]);
-    setLoadingProfile(true);
     try {
       const res = await fetch(`/api/finnhub-profile?symbol=${encodeURIComponent(result.symbol)}`);
       const json = await res.json();
@@ -299,6 +343,11 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
         if (json.country) setNewCountry(json.country);
         if (json.currency && CURRENCIES.includes(json.currency)) setNewCurrency(json.currency);
         setNewMarket(json.market ?? null);
+        // Finnhub's profile endpoint has no fundamentals for ETFs/funds
+        // (e.g. SCHD, SPY) — both come back null together in that case,
+        // as opposed to a single missing field, which is worth telling the
+        // user about instead of leaving the fields silently blank.
+        if (!json.sector && !json.country) setProfileMissingSectorCountry(true);
       }
     } catch {
       // Ignore — sector/country/currency/market just stay unfilled and the
@@ -611,9 +660,10 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
                       </div>
                     )}
 
-                    {/* Manual entry (Thai funds etc.) vs. Finnhub search
-                        (foreign stocks) — same neutral-blue toggle
-                        treatment as Buy/Sell, not colored green/red. */}
+                    {/* Manual entry (Thai funds etc.) vs. Search asset
+                        (Finnhub stocks + the small hardcoded BTC/ETH crypto
+                        list) — same neutral-blue toggle treatment as
+                        Buy/Sell, not colored green/red. */}
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
@@ -635,18 +685,18 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
                             : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-800"
                         }`}
                       >
-                        Search stock (Finnhub)
+                        Search asset
                       </button>
                     </div>
 
                     {newAssetMode === "search" && (
                       <div className="relative">
-                        <label className={LABEL_CLASS}>Search by company name or ticker</label>
+                        <label className={LABEL_CLASS}>Search by name or ticker</label>
                         <input
                           type="text"
                           value={stockSearchQuery}
                           onChange={(e) => setStockSearchQuery(e.target.value)}
-                          placeholder="e.g. Apple or AAPL"
+                          placeholder="e.g. Apple, AAPL, or Bitcoin"
                           className={TEXT_INPUT_CLASS}
                         />
                         {searchingStocks && (
@@ -662,15 +712,15 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
                         {stockSearchResults.length > 0 && (
                           <ul className="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
                             {stockSearchResults.map((r) => (
-                              <li key={r.symbol}>
+                              <li key={`${r.type}-${r.symbol}`}>
                                 <button
                                   type="button"
-                                  onClick={() => selectStockResult(r)}
+                                  onClick={() => selectSearchResult(r)}
                                   className="block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
                                 >
                                   <span className="font-medium">{r.symbol}</span>{" "}
                                   <span className="text-gray-500 dark:text-gray-400">
-                                    {r.description}
+                                    {r.type === "crypto" ? `${r.name} — Crypto` : r.description}
                                   </span>
                                 </button>
                               </li>
@@ -741,6 +791,12 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
                       </div>
                     </div>
 
+                    {profileMissingSectorCountry && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Sector/country not available for this symbol (likely an ETF/fund) —
+                        please fill in manually.
+                      </p>
+                    )}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className={LABEL_CLASS}>Sector (optional)</label>

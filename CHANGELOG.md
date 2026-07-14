@@ -2347,3 +2347,102 @@
   profile` call exactly as before.
 - Verified with `npm run lint` and `npm run build` (both clean, no
   other routes/pages affected).
+
+## 2026-07-15 — Diagnosed & explained the SCHD/ETF "sector/country not filled" report; added a UI notice instead of a silent blank
+- **Diagnosis (no code changed for this part):** selecting an ETF via
+  the new `/quote` fallback (e.g. `SCHD`) left Sector/Country/Currency
+  blank after picking the "verified via direct lookup" result. Traced
+  with real `curl` calls against the running dev server (not
+  speculation): `/api/finnhub-profile?symbol=SCHD` genuinely returns
+  `{"sector":null,"country":null,"currency":null,"market":null}` —
+  compared directly against `AAPL`, which returns real values. Root
+  cause: Finnhub's `/stock/profile2` endpoint (used by
+  `finnhub-profile`) has no company-fundamentals data for ETFs/funds,
+  only for actual common stocks. This wasn't reachable before the
+  `/quote` fallback existed, because `/search` already filtered results
+  down to `type === "Common Stock"` — the fallback has no equivalent
+  type check, since its only validity signal is "does `/quote` show a
+  live price," and ETFs have live prices too.
+- Also tested whether Finnhub's dedicated ETF endpoints
+  (`/etf/profile`, `/etf/sector`, `/etf/holdings`, `/etf/country`)
+  could fill the gap: all 4 returned `403 — "You don't have access to
+  this resource"` on the current (free-tier) API key, confirming
+  they're paid-plan-only and not a viable path on this plan. Tested via
+  a temporary, git-ignored-then-deleted diagnostic API route (same
+  server-side-proxy pattern as the real Finnhub routes, so the key
+  never left the server); removed immediately after, confirmed clean
+  with `git status`.
+- **Fix:** `TransactionModal.tsx`'s `selectStockResult` now sets a new
+  `profileMissingSectorCountry` flag when `/api/finnhub-profile`
+  returns `sector` and `country` both null, and the form shows an
+  amber advisory line above the Sector/Country inputs — "Sector/
+  country not available for this symbol (likely an ETF/fund) — please
+  fill in manually" — instead of leaving them silently blank with no
+  explanation. Amber (not red), matching DESIGN.md's convention that
+  red stays reserved for P&L losses. Currency/market auto-fill is
+  unaffected — the notice only triggers when both sector and country
+  are null. Flag resets on opening the new-asset form and on every new
+  `selectStockResult` call, so it doesn't leak across selections.
+
+## 2026-07-15 — Crypto assets (BTC/ETH) can now be found via "Search asset", auto-filling Sector from CoinGecko categories
+- **Tested first, no key needed:** confirmed CoinGecko's public
+  `/coins/{id}` endpoint (same keyless host `refresh-crypto-prices`
+  already calls) returns a real `categories` array with no API key —
+  `bitcoin` and `ethereum` both came back 200 with data. Confirmed this
+  can't collide with the existing 60s price poll, since the new call
+  only fires once, at asset-creation time, never on a repeating
+  interval.
+- **Found a real data-quality problem before writing any auto-fill
+  code:** `categories[0]` (the naive "just take the first one" approach
+  originally proposed) is **not relevance-ranked** and is full of noise
+  that isn't a sector at all — fund/index names like `"FTX Holdings"`,
+  `"GMCI 30 Index"`, `"Coinbase 50 Index"`, `"Andreessen Horowitz (a16z)
+  Portfolio"`. Worse, both BTC's and ETH's raw `categories[0]` is
+  `"Smart Contract Platform"` — actively misleading for Bitcoin.
+  Reported this before implementing anything further, per instruction.
+- **Decision (user-confirmed):** filter with a denylist regex
+  (`/portfolio|index|holdings|ecosystem|fund/i`) rather than a
+  per-symbol override list or a manual-pick dropdown — cheap, no
+  maintenance list, accepted tradeoff that some edge cases may still
+  slip through.
+- **New route** `GET /api/coingecko-profile?id=` — proxies
+  `/coins/{id}` (`localization/tickers/market_data/community_data/
+  developer_data` all `false`, matching the existing profile-fetch
+  shape), applies the denylist, and returns `{ sector }` only —
+  Country is **not** looked up here; it's hardcoded `"Global"`
+  client-side since crypto has no registered country, and Currency
+  stays the form's `THB` default (crypto is priced directly in THB,
+  same as `refresh-crypto-prices` already does).
+- **Re-tested after implementing, against real data (not just trusting
+  the logic):** `/api/coingecko-profile?id=bitcoin` and `?id=ethereum`
+  both now return `{"sector":"Smart Contract Platform"}`. The denylist
+  *did* strip the fund/index/portfolio noise, but the residual
+  first-remaining category is still identical and still debatable for
+  BTC specifically — a denylist can't fix a categorization CoinGecko
+  itself applies, only remove entries that are clearly not sectors at
+  all. Flagging this now rather than presenting it as a clean win: the
+  feature works exactly as scoped and approved, but won't produce a
+  meaningfully differentiated Sector for BTC vs. ETH today. Still
+  strictly better than before (was manually-typed, now at least
+  auto-fills something plausible, and the input stays freely editable
+  afterward like every other auto-filled field).
+- **Search scope kept intentionally narrow (user-confirmed):** the new
+  crypto entries in "Search asset" are limited to symbols already in
+  `COINGECKO_IDS` (`BTC`, `ETH`) — not the full CoinGecko coin
+  universe. `CRYPTO_SEARCH_ENTRIES` (new, in `src/lib/coingecko.ts`) is
+  *derived from* `COINGECKO_IDS`, so anything searchable/creatable this
+  way automatically already has auto price-refresh support; adding a
+  new coin later means updating `COINGECKO_IDS` (and its display-name
+  sibling map) once, not maintaining two separate lists.
+- **UI:** the "Search stock (Finnhub)" mode/button in `TransactionModal`
+  is renamed **"Search asset"** — one unified result dropdown now mixes
+  Finnhub stock matches with the (instant, client-side, no API call)
+  crypto matches; crypto entries show as `"{symbol} — {name} — Crypto"`
+  to stay visually distinct from stock results. Selecting one now
+  branches in a renamed `selectSearchResult()` (was `selectStockResult`)
+  by `result.type`: crypto sets Asset type/Country/Currency directly and
+  fetches only Sector from the new route; stock keeps the exact
+  previous Finnhub flow unchanged.
+- Verified with `npm run lint` and `npm run build` (clean), plus a live
+  `curl` round-trip against the new route and the dev server before and
+  after implementation.

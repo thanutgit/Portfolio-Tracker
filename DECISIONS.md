@@ -502,3 +502,34 @@ so the client never learns two Finnhub endpoints are involved — it just
 sees one more result, labeled "— verified via direct lookup" so the
 user knows it wasn't a name/description match. Parallel, not
 sequential, so a real ticker's request doesn't pay for two round-trips.
+
+## D113 — Didn't chase a free API for ETF sector/country; show an advisory message and let the user fill it in manually instead
+Tested both Finnhub (`/stock/profile2` has no ETF fundamentals) and FMP
+(`/stable/etf-sector-weighting` returns empty even for SPY on the free
+tier) — neither gives this data for free. This is an industry-wide
+pattern: ETF-level analytics is usually a premium feature. Not worth
+adding a 3rd API integration (Alpha Vantage), since it would likely hit
+the same limitation.
+
+## D114 — Crypto (BTC/ETH) search folded into a unified "Search asset" mode; Sector auto-filled from CoinGecko `categories`, filtered by a denylist regex
+Renamed `TransactionModal`'s "Search stock (Finnhub)" mode to "Search
+asset" — one result dropdown now mixes Finnhub stock matches with a
+small, hardcoded crypto entry list (`CRYPTO_SEARCH_ENTRIES`, matched
+instantly client-side, no API call). Confirmed via real test calls that
+CoinGecko's `categories` field exists and needs no API key, but
+`categories[0]` is not relevance-ranked and is full of non-sector noise
+(fund/index/portfolio names); both BTC and ETH's first category was
+also literally `"Smart Contract Platform"`, misleading for Bitcoin.
+Chose a denylist regex (`/portfolio|index|holdings|ecosystem|fund/i`)
+over a per-symbol override list or a manual-pick dropdown — cheap, no
+maintenance list, accepted tradeoff that the residual first category
+can still be an imperfect fit (confirmed post-fix: both BTC and ETH
+still resolve to `"Smart Contract Platform"` after filtering — still
+an improvement over the old hardcoded "Cryptocurrency", but not a
+fully differentiated result). Search scope deliberately limited to
+symbols already in `COINGECKO_IDS` (BTC, ETH), not the full CoinGecko
+coin universe, so anything creatable this way automatically already
+has price auto-refresh support — no second list to keep in sync.
+Country stays hardcoded `"Global"` and Currency stays the form's THB
+default; only Sector is fetched, via a new `GET /api/coingecko-profile`
+route.
