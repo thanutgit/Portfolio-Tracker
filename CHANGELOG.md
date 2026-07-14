@@ -2446,3 +2446,72 @@
 - Verified with `npm run lint` and `npm run build` (clean), plus a live
   `curl` round-trip against the new route and the dev server before and
   after implementation.
+
+## 2026-07-15 — Crypto price auto-refresh made dynamic: any CoinGecko coin, not just BTC/ETH (supersedes D20)
+- **New migration** `migrations/0013_add_coingecko_id.sql` (NOT applied
+  yet): adds `assets.coingecko_id` (text, nullable, unique — one coin
+  maps to at most one asset row) and backfills `bitcoin`/`ethereum` onto
+  the existing BTC/ETH rows (matched via `upper(symbol)`, so casing
+  can't cause a silent miss). Includes a read-only check query to run
+  before and after, mirroring migration 0012's preview-first pattern.
+- **`src/lib/coingecko.ts`** stripped down to just `hasAutoFetch(asset)`,
+  now checking `asset.coingecko_id != null` instead of a hardcoded `{
+  BTC, ETH }` map — the map (`COINGECKO_IDS`) and its derived
+  `CRYPTO_SEARCH_ENTRIES` list (added earlier this session, now already
+  superseded) are both removed rather than kept as unused fallbacks,
+  since nothing should read from them going forward.
+- **`/api/refresh-crypto-prices`** rewritten to query
+  `assets` where `asset_type = 'crypto'`, read each row's own
+  `coingecko_id`, and batch-fetch `/simple/price` for whichever ids are
+  present — same shape and same "skipped: reason" reporting as before,
+  just driven by the DB instead of a static list. An `asset_type =
+  'crypto'` row with a null `coingecko_id` (manual entry, or a pre-0013
+  asset not yet backfilled) is now reported as `"skipped: no
+  coingecko_id"`.
+- **New route** `GET /api/coingecko-search?q=` — proxies CoinGecko's
+  `/search` (confirmed live: no API key needed, same host as the price
+  refresh), sorted by `market_cap_rank` (nulls last) and capped to 10 —
+  tested against `solana`/`bitcoin`, both correctly rank the real coin
+  first ahead of low-cap namesake tokens.
+- **`TransactionModal.tsx`**: "Search asset" now fires the stock
+  (Finnhub) and crypto (CoinGecko) searches **in parallel** on every
+  debounce tick instead of the crypto side being an instant client-side
+  match against a fixed 2-entry list. If one side errors, the other's
+  results still render; the error banner only shows if *both* come back
+  empty, so a CoinGecko hiccup can't hide valid stock matches or vice
+  versa. New `newCoingeckoId` state is set when a crypto result is
+  picked and explicitly cleared at the top of `selectSearchResult()` (not
+  just on form-open) — needed because switching from a crypto pick to a
+  stock pick in the same session could otherwise leave a stale
+  `coingecko_id` attached to what's about to become a stock asset.
+  Reused the existing `/api/coingecko-profile` route unchanged for
+  Sector auto-fill.
+- **`src/lib/assets.ts`**: `NewAssetInput`/`createAsset` gained
+  `coingecko_id`; a unique-constraint violation on it now gets a
+  specific message ("Another asset is already linked to this CoinGecko
+  coin") distinguished from a plain symbol-duplicate error by checking
+  whether the Postgres error message mentions `coingecko_id`.
+- **`EditAssetModal.tsx`**: new "CoinGecko ID (optional)" field, shown
+  only when Asset type is `crypto` — lets a legacy or manually-entered
+  crypto asset be backfilled for auto-refresh from the UI, without
+  needing a hand-written SQL `UPDATE`. Same duplicate-id error handling
+  as `createAsset`.
+- **`src/lib/types.ts`**: `Asset` gained `coingecko_id: string | null`;
+  every `assets` `select(...)` that feeds an `Asset`-typed value
+  (`TransactionModal`, `assets/page.tsx`) updated to fetch it.
+  `prices/page.tsx`'s `AssetLite` + its `assets` select also updated,
+  and its `hasAutoFetch(a.symbol)` call updated to the new
+  `hasAutoFetch(a)` signature.
+- **Deliberately not tested against the live database this round**:
+  `/api/refresh-crypto-prices` wasn't called against the running dev
+  server, because the live `assets` table doesn't have `coingecko_id`
+  yet (migration not applied) and, once it does, that route inserts
+  real rows into the live `prices` table — a live-data write, which
+  needs to be asked about first regardless of whether it's "just a
+  test." `/api/coingecko-search` and the reused `/api/coingecko-profile`
+  were tested live since they're read-only.
+- ARCHITECTURE.md's crypto-refresh and Finnhub/CoinGecko search sections
+  rewritten to describe the dynamic, DB-backed model; also corrected a
+  stale line that still said crypto refresh was a manual button (D25
+  removed that button a while ago; it's been a 60s auto-poll since).
+  `migrations/README.md` updated with the new file.

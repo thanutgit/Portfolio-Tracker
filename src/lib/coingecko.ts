@@ -1,27 +1,9 @@
-// Symbol -> CoinGecko coin id. Only symbols listed here are auto-refreshed
-// via /api/refresh-crypto-prices — every other asset needs a manual price
-// (see the Prices page, which filters its asset picker down to these).
-export const COINGECKO_IDS: Record<string, string> = {
-  BTC: "bitcoin",
-  ETH: "ethereum",
-};
-
-export function hasAutoFetch(symbol: string): boolean {
-  return symbol.toUpperCase() in COINGECKO_IDS;
+// Whether this asset has CoinGecko-based auto price-refresh — determined
+// by the DB-backed `coingecko_id` column (migrations/0013), not a
+// hardcoded symbol list. Supersedes D20's original { BTC, ETH } map: any
+// crypto asset created via TransactionModal's "Search asset" mode gets a
+// real CoinGecko id at creation time, so this scales to any coin instead
+// of only the two symbols that used to be hardcoded in this file.
+export function hasAutoFetch(asset: { coingecko_id: string | null }): boolean {
+  return asset.coingecko_id != null;
 }
-
-// Display names for TransactionModal's crypto search — deliberately scoped
-// to the same symbols as COINGECKO_IDS (not the full CoinGecko universe),
-// so anything creatable via search also gets auto price-refresh for free.
-// A symbol missing here just falls back to showing its own ticker.
-const COINGECKO_NAMES: Record<string, string> = {
-  BTC: "Bitcoin",
-  ETH: "Ethereum",
-};
-
-export const CRYPTO_SEARCH_ENTRIES: { symbol: string; name: string; coingeckoId: string }[] =
-  Object.entries(COINGECKO_IDS).map(([symbol, coingeckoId]) => ({
-    symbol,
-    name: COINGECKO_NAMES[symbol] ?? symbol,
-    coingeckoId,
-  }));

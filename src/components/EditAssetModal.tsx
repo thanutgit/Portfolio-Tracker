@@ -25,6 +25,7 @@ export function EditAssetModal({ asset, onClose, onSaved }: Props) {
   const [sector, setSector] = useState(asset.sector ?? "");
   const [country, setCountry] = useState(asset.country ?? "");
   const [taxBucket, setTaxBucket] = useState(asset.tax_bucket);
+  const [coingeckoId, setCoingeckoId] = useState(asset.coingecko_id ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { confirm, confirmState, handleConfirm, handleCancel } = useConfirm();
@@ -74,11 +75,16 @@ export function EditAssetModal({ asset, onClose, onSaved }: Props) {
         sector: sector.trim() || null,
         country: country.trim() || null,
         tax_bucket: taxBucket,
+        coingecko_id: coingeckoId.trim() || null,
       })
       .eq("id", asset.id);
     if (error) {
       if (error.code === "23505" || /duplicate key/i.test(error.message)) {
-        setError(`An asset with symbol "${trimmedSymbol}" already exists.`);
+        if (/coingecko_id/i.test(error.message)) {
+          setError("Another asset is already linked to this CoinGecko coin.");
+        } else {
+          setError(`An asset with symbol "${trimmedSymbol}" already exists.`);
+        }
       } else {
         setError(error.message);
       }
@@ -191,6 +197,24 @@ export function EditAssetModal({ asset, onClose, onSaved }: Props) {
               />
             </div>
           </div>
+
+          {assetType === "crypto" && (
+            <div>
+              <label className={LABEL_CLASS}>CoinGecko ID (optional)</label>
+              <input
+                type="text"
+                value={coingeckoId}
+                onChange={(e) => setCoingeckoId(e.target.value)}
+                placeholder="e.g. bitcoin"
+                className={INPUT_CLASS}
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Needed for auto price-refresh. Assets added via &quot;Search
+                asset&quot; already have this filled in — set it here to
+                backfill an older or manually-entered crypto asset.
+              </p>
+            </div>
+          )}
 
           <div>
             <label className={LABEL_CLASS}>Tax bucket</label>

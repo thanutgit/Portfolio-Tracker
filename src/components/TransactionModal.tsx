@@ -6,7 +6,6 @@ import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
 import { ASSET_TYPES, CURRENCIES, TAX_BUCKETS, createAsset } from "@/lib/assets";
-import { CRYPTO_SEARCH_ENTRIES } from "@/lib/coingecko";
 import { formatMoney, formatQuantity, formatUnitPrice } from "@/lib/format";
 import { computeTaxHoldingStatus } from "@/lib/taxHolding";
 import type { Asset } from "@/lib/types";
@@ -177,6 +176,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
   const [newSector, setNewSector] = useState("");
   const [newCountry, setNewCountry] = useState("");
   const [newMarket, setNewMarket] = useState<string | null>(null);
+  const [newCoingeckoId, setNewCoingeckoId] = useState<string | null>(null);
   const [newTaxBucket, setNewTaxBucket] = useState("normal");
   const [creatingAsset, setCreatingAsset] = useState(false);
   const [newAssetError, setNewAssetError] = useState<string | null>(null);
@@ -198,7 +198,9 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     (async () => {
       const { data, error } = await supabase
         .from("assets")
-        .select("id, symbol, name, asset_type, currency, sector, country, tax_bucket, market")
+        .select(
+          "id, symbol, name, asset_type, currency, sector, country, tax_bucket, market, coingecko_id"
+        )
         .order("symbol");
       if (error) {
         setError(error.message);
@@ -238,6 +240,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     setNewSector("");
     setNewCountry("");
     setNewMarket(null);
+    setNewCoingeckoId(null);
     setNewTaxBucket("normal");
     setNewAssetError(null);
     setNewAssetMode("manual");
@@ -248,12 +251,13 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     setNewAssetForRowId(rowId);
   }
 
-  // "Search asset" mixes two sources: the small, hardcoded crypto entry
-  // list (matched instantly, client-side, no API call — see
-  // CRYPTO_SEARCH_ENTRIES) and Finnhub's stock /search (debounced ~400ms
-  // after the user stops typing, so fast typing doesn't fire a request per
-  // keystroke). Crypto matches show immediately; Finnhub results are
-  // merged in once the debounced fetch resolves.
+  // "Search asset" mixes two sources, both hit in parallel (not one after
+  // the other) after ~400ms of no typing: Finnhub's /search for stocks and
+  // CoinGecko's /search for any coin (not limited to a fixed list —
+  // supersedes the old hardcoded { BTC, ETH } approach, D20). If one side
+  // errors, the other's results still show — only if BOTH come back empty
+  // does the error text appear, so a CoinGecko hiccup doesn't hide valid
+  // stock matches (or vice versa).
   useEffect(() => {
     const query = stockSearchQuery.trim();
     if (newAssetMode !== "search" || !query) {
@@ -261,33 +265,51 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
       setStockSearchResults([]);
       return;
     }
-    const q = query.toLowerCase();
-    const cryptoMatches: SearchResult[] = CRYPTO_SEARCH_ENTRIES.filter(
-      (c) => c.symbol.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
-    ).map((c) => ({ type: "crypto", symbol: c.symbol, name: c.name, coingeckoId: c.coingeckoId }));
-    setStockSearchResults(cryptoMatches);
-
     const handle = setTimeout(async () => {
       setSearchingStocks(true);
       setStockSearchError(null);
       try {
-        const res = await fetch(`/api/finnhub-search?q=${encodeURIComponent(query)}`);
-        const json = await res.json();
-        if (!res.ok) {
-          setStockSearchError(json.error ?? "Search failed.");
-          setStockSearchResults(cryptoMatches);
+        const [stockRes, cryptoRes] = await Promise.all([
+          fetch(`/api/finnhub-search?q=${encodeURIComponent(query)}`),
+          fetch(`/api/coingecko-search?q=${encodeURIComponent(query)}`),
+        ]);
+        const [stockJson, cryptoJson] = await Promise.all([stockRes.json(), cryptoRes.json()]);
+
+        const errors: string[] = [];
+        let stockResults: SearchResult[] = [];
+        let cryptoResults: SearchResult[] = [];
+
+        if (!stockRes.ok) {
+          errors.push(stockJson.error ?? "Stock search failed.");
         } else {
-          const stockResults: SearchResult[] = (json.results ?? []).map(
+          stockResults = (stockJson.results ?? []).map(
             (r: { symbol: string; description: string; verified?: boolean }) => ({
               type: "stock" as const,
               ...r,
             })
           );
-          setStockSearchResults([...cryptoMatches, ...stockResults]);
+        }
+
+        if (!cryptoRes.ok) {
+          errors.push(cryptoJson.error ?? "Crypto search failed.");
+        } else {
+          cryptoResults = (cryptoJson.results ?? []).map(
+            (c: { id: string; symbol: string; name: string }) => ({
+              type: "crypto" as const,
+              symbol: c.symbol,
+              name: c.name,
+              coingeckoId: c.id,
+            })
+          );
+        }
+
+        setStockSearchResults([...cryptoResults, ...stockResults]);
+        if (errors.length > 0 && stockResults.length === 0 && cryptoResults.length === 0) {
+          setStockSearchError(errors.join(" "));
         }
       } catch {
         setStockSearchError("Couldn't reach the search service.");
-        setStockSearchResults(cryptoMatches);
+        setStockSearchResults([]);
       } finally {
         setSearchingStocks(false);
       }
@@ -306,6 +328,10 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     setStockSearchQuery("");
     setStockSearchResults([]);
     setProfileMissingSectorCountry(false);
+    // Reset here (not just on open) so switching from a crypto pick to a
+    // stock pick in the same session can't leave a stale coingecko_id
+    // attached to what's about to become a stock asset.
+    setNewCoingeckoId(null);
     setLoadingProfile(true);
 
     if (result.type === "crypto") {
@@ -316,6 +342,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
       setNewAssetType("crypto");
       setNewCountry("Global");
       setNewCurrency("THB");
+      setNewCoingeckoId(result.coingeckoId);
       try {
         const res = await fetch(
           `/api/coingecko-profile?id=${encodeURIComponent(result.coingeckoId)}`
@@ -369,6 +396,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
       country: newCountry,
       tax_bucket: newTaxBucket,
       market: newMarket,
+      coingecko_id: newCoingeckoId,
     });
     if (error || !data) {
       setNewAssetError(error ?? "Failed to create asset.");

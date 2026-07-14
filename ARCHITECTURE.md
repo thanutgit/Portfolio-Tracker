@@ -68,26 +68,10 @@ Tables:
 Views (computed, read-only):
 - `latest_prices` — newest price per asset.
 - `holdings` — per asset: quantity, avg_cost, last_price, cost_basis,
-  market_value, unrealized_pnl, unrealized_pct. **Proper running
-  weighted-average cost** (migration `0012_fix_holdings_avg_cost_running_
-  total.sql` — NOT yet applied, see DECISIONS.md and GOTCHAS.md): replays
-  every buy/sell in chronological order via a `WITH RECURSIVE` CTE,
-  keeping a running `(quantity, total_cost)` state — a buy adds
-  quantity+cost, a sell removes quantity *and* removes cost proportionally
-  at the running average cost *at that point in time* (never the sale
-  price). This is NOT expressible as a plain aggregate `SUM()`, since a
-  sell's cost removal depends on the running average computed from every
-  prior row for that asset — the original `0001_init.sql` formula
-  (`SUM(buy qty×price+fee)/SUM(buy qty)`, ignoring sells) only happens to
-  match this whenever every sell comes after every buy; it silently
-  diverges the moment a buy occurs after a prior sell (confirmed against
-  real data — see GOTCHAS.md). `quantity`/`market_value` were never wrong
-  (a simple net buy-minus-sell sum, order-independent) — only
-  `avg_cost`/`cost_basis`/`unrealized_pnl`/`unrealized_pct` (and, via
-  `holdings_with_returns`, `total_return`/`total_return_pct`) were
-  affected. XIRR is unaffected — it builds cash flows straight from raw
-  transaction prices, and its only `holdings`-derived input is
-  `market_value`, which never depended on `avg_cost`.
+  market_value, unrealized_pnl, unrealized_pct. `avg_cost` uses a proper
+  running weighted-average cost, not a plain aggregate — see "avg_cost
+  fix (running weighted-average cost)" below for the bug this replaced,
+  the fix itself, and its exact blast radius.
 - `dividend_income` — net dividends received per asset (all-time), from
   `transactions` where `type = 'dividend'`. Convention: `quantity = 1`,
   `price` = gross dividend amount, `tax` = withholding tax. Added Phase 3.
@@ -322,6 +306,48 @@ across all flagged lots. Warns, doesn't block — same philosophy as the
 oversell check (D44): selling is still legitimately possible in real
 life, just potentially at the cost of a claimed tax benefit.
 
+## avg_cost fix (running weighted-average cost, migration 0012)
+The `holdings` view's original formula (`0001_init.sql`) computed
+`avg_cost` as `SUM(buy qty×price+fee) / SUM(buy qty)` — the *lifetime
+average purchase price* across every unit ever bought, dividing by units
+that may since have been sold. That's only correct if every sell for an
+asset happens after every buy; it silently diverges the moment a buy
+occurs *after* a prior sell (a normal pattern for an ongoing DCA fund
+with occasional partial redemptions) — proven wrong with a minimal case:
+buy 100 @ 10, sell 50, buy 100 @ 20 should average to `2500/150 =
+16.667`, but the old formula gives `(1000+2000)/200 = 15`. Confirmed
+against real data, not just the synthetic case — see GOTCHAS.md #8.
+
+`migrations/0012_fix_holdings_avg_cost_running_total.sql` (**NOT yet
+applied**) replaces it with a proper running weighted-average cost: a
+`WITH RECURSIVE` CTE replays every buy/sell for each asset in
+chronological order (`trade_date`, then `created_at`, then `id` as
+tiebreakers, since `created_at` is identical for every row of a single
+multi-row batch insert — see "Multi-row transaction entry" below),
+keeping a running `(quantity, total_cost)` state per asset — a buy adds
+quantity+cost; a sell removes quantity *and* removes cost
+proportionally at the running average cost *at that point in time*,
+never the sale price. This can't be expressed as a plain aggregate
+`SUM()`, since a sell's cost removal depends on the running average
+computed from every prior row for that asset — the same reason a
+running account balance needs a window/recursive calculation, not a
+flat sum. `cost_basis` is computed directly from the running total
+(not re-derived via `quantity × avg_cost`) to avoid a divide-then-
+multiply rounding round-trip.
+
+**Confirmed blast radius** (checked by code review, not assumed):
+`avg_cost`, `cost_basis`, `unrealized_pnl`, `unrealized_pct` (and, via
+`holdings_with_returns`, `total_return`/`total_return_pct`) are
+affected. `quantity`/`market_value` are **not** affected — a simple net
+buy-minus-sell sum, order-independent either way. **XIRR is not
+affected** — `loadXirr()` builds cash flows straight from raw
+transaction prices, and its only `holdings`-derived input is
+`market_value` (quantity × last price), which never depended on
+`avg_cost`. See GOTCHAS.md #8 and DECISIONS.md D111 for the full
+diagnosis and validation approach (a JS simulation of the recursive
+CTE's logic against 5 hand-computable cases, since live data couldn't
+be queried directly to validate against — RLS + no login credentials).
+
 ## Multi-row transaction entry
 `TransactionModal` ("+ Add transaction") holds an array of independent
 rows (`TxnRow[]`, each with its own type/asset/date/quantity/price/fee),
@@ -362,32 +388,49 @@ saved."/"N transactions saved." accordingly.
 
 ## Crypto price refresh
 `POST /api/refresh-crypto-prices` (Next.js Route Handler, server-side) fetches
-BTC/THB (and ETH/THB) from CoinGecko's free public API (no key) and inserts
-into `prices` with `source = 'api'`. Manually triggered from the Holdings page
-button — no background job/cron yet. Only assets whose symbol has a known
-CoinGecko id are refreshed (see `COINGECKO_IDS`, now shared from
-`src/lib/coingecko.ts` rather than declared locally — also used by the Prices
-page to exclude these assets from its manual-entry picker); other
-`asset_type = 'crypto'` assets are reported as skipped, not silently ignored.
-Thai funds have no public price API and stay manual. See DECISIONS.md.
+THB prices from CoinGecko's free public API (no key) for every asset with
+`asset_type = 'crypto'` and a non-null `coingecko_id`, and inserts into
+`prices` with `source = 'api'`. Auto-triggered on the Holdings page (on mount
+and every 60s while it's open) — no manual button, no cron/background job.
+Which coin each asset maps to is per-asset, in the DB (`assets.coingecko_id`,
+migration `0013_add_coingecko_id.sql`), not a hardcoded symbol list —
+supersedes the original D20 approach (hardcoded when only BTC was held). Any
+`asset_type = 'crypto'` asset with a null `coingecko_id` (created via manual
+entry, or a pre-0013 asset not yet backfilled) is reported as skipped, not
+silently ignored — same "skipped: reason" shape used elsewhere. `hasAutoFetch()`
+in `src/lib/coingecko.ts` (used by the Prices page to exclude these assets from
+its manual-entry picker) now checks `coingecko_id != null` instead of a
+hardcoded map. Thai funds have no public price API and stay manual. See
+DECISIONS.md.
 
-## Foreign stock search + price refresh (Finnhub)
-Server-side only — `FINNHUB_API_KEY` (plain env var, **not**
-`NEXT_PUBLIC_`) never reaches the client. Three routes:
+New crypto assets (and the `coingecko_id` that makes them auto-refreshable)
+are found through the UI via `GET /api/coingecko-search?q=`, CoinGecko's own
+coin search — not limited to any fixed list, so any coin CoinGecko tracks can
+be added this way. See "Asset search" below for the full search flow.
+
+## Asset search — "Search asset" mode (Finnhub stocks + CoinGecko crypto)
+`TransactionModal`'s inline "+ Add new asset" form has two modes: "Manual
+entry" (unchanged, used for Thai funds and anything else) and "Search asset"
+— one unified result dropdown mixing Finnhub stock matches and CoinGecko
+crypto matches, fired in parallel, debounced ~400ms after the user stops
+typing. If one side errors, the other's results still show; the error text
+only appears if both come back empty.
 - `GET /api/finnhub-search?q=` — proxies Finnhub's `/search`, filtered to
   `type === "Common Stock"` (Finnhub's search also returns ETPs/mutual
-  funds/etc., out of scope here) and capped to 10 results. Called from
-  `TransactionModal`'s inline "+ Add new asset" form, in a new "Search
-  stock (Finnhub)" mode alongside the original "Manual entry" mode
-  (unchanged, still used for Thai funds) — debounced ~400ms after the user
-  stops typing.
+  funds/etc., out of scope here) and capped to 10 results. `FINNHUB_API_KEY`
+  (plain env var, **not** `NEXT_PUBLIC_`) never reaches the client. Falls back
+  to a `/quote` lookup (fired in parallel, not sequentially) when `/search`
+  returns nothing for a ticker-shaped query, surfacing a "— verified via
+  direct lookup" result if `/quote` shows a live price.
 - `GET /api/finnhub-profile?symbol=` — proxies `/stock/profile2`, called
-  once, right after a search result is picked (not per keystroke), to
+  once, right after a stock search result is picked (not per keystroke), to
   auto-fill sector (`finnhubIndustry`), country, currency, and market
-  (`exchange`) in the new-asset form. Every auto-filled field stays a
-  normal, editable input afterward. Finnhub returns `{}` (200 OK, not an
-  error) for a symbol with no profile data — the form just leaves those
-  fields blank for manual entry rather than erroring.
+  (`exchange`). Every auto-filled field stays a normal, editable input
+  afterward. Finnhub returns `{}` (200 OK, not an error) for a symbol with no
+  profile data (also the norm for ETFs — Finnhub's free tier has no
+  ETF-specific fundamentals endpoints either) — an amber notice tells the
+  user to fill Sector/Country manually instead of leaving them silently
+  blank, rather than erroring.
 - `POST /api/refresh-stock-prices` — mirrors `/api/refresh-crypto-prices`'s
   shape, but fetches `/quote` (no batch endpoint, unlike CoinGecko) for
   every eligible held stock in parallel and inserts into `prices` with
@@ -397,14 +440,33 @@ Server-side only — `FINNHUB_API_KEY` (plain env var, **not**
   higher limit), and unlike crypto, stocks aren't traded 24/7, so a
   repeating poll would burn the daily quota for no benefit. Silent
   otherwise (no loading state, no banner), same as crypto.
+- `GET /api/coingecko-search?q=` — proxies CoinGecko's `/search` (no API
+  key needed), sorted by `market_cap_rank` (nulls last) and capped to 10, so
+  a real/liquid coin surfaces above low-cap namesake tokens. Not limited to
+  any fixed coin list — any CoinGecko coin can be found and turned into an
+  asset this way.
+- `GET /api/coingecko-profile?id=` — proxies `/coins/{id}`, extracts
+  `categories` filtered by a denylist regex
+  (`/portfolio|index|holdings|ecosystem|fund/i`, since CoinGecko's category
+  order isn't relevance-ranked and mixes in fund/index names that aren't a
+  sector) to auto-fill Sector. Country is hardcoded `"Global"` and Currency
+  stays the form's `THB` default client-side — crypto has no registered
+  country, and this app prices crypto directly in THB — so neither is
+  looked up here.
+
+Picking a crypto search result sets `asset_type = 'crypto'` and stores the
+CoinGecko coin id in the new `assets.coingecko_id` column (migration 0013),
+which `/api/refresh-crypto-prices` then uses for auto price-refresh — see
+"Crypto price refresh" above.
 
 **Which assets are eligible** (`isForeignStock()` in `src/lib/finnhub.ts`):
 `asset_type === 'stock' && market` is truthy. This reuses the existing
 `assets.market` column — present since `0001_init.sql` ("SET, mai, NYSE,
 NASDAQ, null") but never actually populated by any form until this
-feature — rather than adding a new column or a hardcoded symbol lookup
-(crypto's approach, `COINGECKO_IDS`, which doesn't scale to the thousands
-of possible stock tickers). Assets created via the old manual-entry path
+feature — rather than a hardcoded symbol lookup (crypto's original
+approach before migration 0013, which didn't scale to the thousands of
+possible stock tickers, and doesn't scale for crypto either once search
+isn't limited to a couple of hardcoded coins). Assets created via the old manual-entry path
 (Thai funds, or a hand-typed foreign stock) leave `market` null and are
 correctly excluded; only assets created via the Finnhub search flow (which
 sets `market` from the profile's `exchange` field) become eligible. See

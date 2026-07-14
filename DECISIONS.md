@@ -533,3 +533,25 @@ has price auto-refresh support — no second list to keep in sync.
 Country stays hardcoded `"Global"` and Currency stays the form's THB
 default; only Sector is fetched, via a new `GET /api/coingecko-profile`
 route.
+
+## D115 — Supersedes D20: dropped the hardcoded `COINGECKO_IDS` list in favor of an `assets.coingecko_id` column
+D20's original reasoning ("hardcoded since only BTC is held right now")
+no longer holds once crypto can be found and added for any coin in
+CoinGecko via search — the mapping has to scale with however many
+crypto assets exist, so it has to live in the database, per asset, not
+as a static list in code.
+
+## D116 — `coingecko_id` has a unique constraint
+Prevents creating two asset rows pointed at the same coin, which would
+make `/api/refresh-crypto-prices` double-update from a single price
+fetch.
+
+## D117 — Removed `COINGECKO_IDS`/`CRYPTO_SEARCH_ENTRIES` entirely rather than keeping either as a fallback
+Nothing in the system should read from them once the migration is
+applied — keeping them around unused would just be confusing dead code
+to trip over later.
+
+## D118 — Added a "CoinGecko ID" field to `EditAssetModal` (beyond what was asked)
+Lets a legacy or manually-entered crypto asset be backfilled for
+CoinGecko auto-refresh directly from the UI, instead of needing a
+hand-written SQL `UPDATE` every time.

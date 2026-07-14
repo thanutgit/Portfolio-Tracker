@@ -156,7 +156,15 @@
       "Bash(curl -s \"http://localhost:3000/api/coingecko-profile?id=bitcoin\")",
       "Bash(curl -s \"http://localhost:3000/api/coingecko-profile?id=ethereum\")",
       "Bash(powershell -NoProfile -Command \"Stop-Process -Id 21352 -Force\")",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(curl -s \"https://api.coingecko.com/api/v3/search?query=sol\" -o search_sol.json -w \"HTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s \"http://localhost:3000/api/coingecko-search?q=solana\")",
+      "Bash(curl -s \"http://localhost:3000/api/coingecko-search?q=bitcoin\")",
+      "Bash(curl -s \"http://localhost:3000/api/coingecko-search?q=\")",
+      "Bash(curl -s \"http://localhost:3000/api/coingecko-profile?id=solana\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 19196 -Force\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\Thanu\\Desktop\\PP\\Claude\\Portfolio Tracker\\src\\app\\api"

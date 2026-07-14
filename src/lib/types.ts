@@ -69,4 +69,10 @@ export interface Asset {
   // src/lib/finnhub.ts's isForeignStock()); null for everything else,
   // including Thai funds and any asset created via manual entry.
   market: string | null;
+  // CoinGecko coin id (e.g. "bitcoin") — populated automatically when a
+  // crypto asset is created via "Search asset" in TransactionModal; null
+  // for non-crypto assets and for crypto assets created before this
+  // column existed (migrations/0013) or via manual entry. Used by
+  // /api/refresh-crypto-prices to know which coins to auto-refresh.
+  coingecko_id: string | null;
 }

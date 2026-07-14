@@ -17,6 +17,10 @@ export interface NewAssetInput {
   // search flow in TransactionModal; the manual-entry path never collects
   // this (no UI field for it), so it stays null there, same as before.
   market?: string | null;
+  // CoinGecko coin id, e.g. "bitcoin" — only ever set via the crypto side
+  // of TransactionModal's "Search asset" flow; manual entry (and the
+  // stock side of search) never collects this, so it stays null there.
+  coingecko_id?: string | null;
 }
 
 // The schema's unique constraint is on (symbol, market) — forms in this app
@@ -69,11 +73,21 @@ export async function createAsset(
       country: input.country.trim() || null,
       tax_bucket: input.tax_bucket,
       market: input.market?.trim() || null,
+      coingecko_id: input.coingecko_id?.trim() || null,
     })
-    .select("id, symbol, name, asset_type, currency, sector, country, tax_bucket, market")
+    .select("id, symbol, name, asset_type, currency, sector, country, tax_bucket, market, coingecko_id")
     .single();
   if (error) {
     if (error.code === "23505" || /duplicate key/i.test(error.message)) {
+      // Distinguish which unique constraint fired — symbol duplicates are
+      // the common case, but a coingecko_id collision (the same coin
+      // added twice) is a different, equally real mistake to explain.
+      if (/coingecko_id/i.test(error.message)) {
+        return {
+          data: null,
+          error: "Another asset is already linked to this CoinGecko coin.",
+        };
+      }
       return { data: null, error: `An asset with symbol "${trimmedSymbol}" already exists.` };
     }
     return { data: null, error: error.message };

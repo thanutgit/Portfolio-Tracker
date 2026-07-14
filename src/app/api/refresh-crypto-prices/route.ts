@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { COINGECKO_IDS, hasAutoFetch } from "@/lib/coingecko";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +11,7 @@ interface SkipReason {
 export async function POST() {
   const { data: assets, error: assetsError } = await supabase
     .from("assets")
-    .select("id, symbol")
+    .select("id, symbol, coingecko_id")
     .eq("asset_type", "crypto");
 
   if (assetsError) {
@@ -23,17 +22,25 @@ export async function POST() {
   }
 
   const skipped: SkipReason[] = [];
-  const priceable = assets.filter((a) => {
-    if (hasAutoFetch(a.symbol)) return true;
-    skipped.push({ symbol: a.symbol, reason: "No CoinGecko mapping for this symbol" });
-    return false;
-  });
+  // Dynamic per-asset lookup (migrations/0013's `coingecko_id` column),
+  // not a hardcoded symbol list — supersedes D20, since crypto assets can
+  // now be created for any CoinGecko coin via "Search asset", not just
+  // BTC/ETH. An asset created before this column existed (or created via
+  // manual entry, which never sets it) is reported as skipped, same as
+  // an unrecognized symbol was before.
+  const priceable = assets.filter(
+    (a): a is typeof a & { coingecko_id: string } => {
+      if (a.coingecko_id) return true;
+      skipped.push({ symbol: a.symbol, reason: "No coingecko_id set for this asset" });
+      return false;
+    }
+  );
 
   if (priceable.length === 0) {
     return NextResponse.json({ updated: [], skipped });
   }
 
-  const ids = [...new Set(priceable.map((a) => COINGECKO_IDS[a.symbol.toUpperCase()]))].join(",");
+  const ids = [...new Set(priceable.map((a) => a.coingecko_id))].join(",");
   const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=thb`;
 
   let body: Record<string, { thb?: number }>;
@@ -64,8 +71,7 @@ export async function POST() {
   const updated: { symbol: string; price: number; as_of: string }[] = [];
 
   for (const asset of priceable) {
-    const coinId = COINGECKO_IDS[asset.symbol.toUpperCase()];
-    const price = body[coinId]?.thb;
+    const price = body[asset.coingecko_id]?.thb;
     if (price == null) {
       skipped.push({ symbol: asset.symbol, reason: "CoinGecko didn't return a THB price" });
       continue;

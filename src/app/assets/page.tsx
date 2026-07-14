@@ -61,7 +61,9 @@ export default function AssetsPage() {
     setError(null);
     const { data, error } = await supabase
       .from("assets")
-      .select("id, symbol, name, asset_type, currency, sector, country, tax_bucket, market")
+      .select(
+        "id, symbol, name, asset_type, currency, sector, country, tax_bucket, market, coingecko_id"
+      )
       .order("symbol");
     if (error) {
       setError(error.message);

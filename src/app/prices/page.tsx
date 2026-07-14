@@ -19,6 +19,7 @@ interface AssetLite {
   currency: string;
   asset_type: string;
   market: string | null;
+  coingecko_id: string | null;
 }
 
 interface ParsedRow {
@@ -191,7 +192,7 @@ export default function PricesPage() {
       setLoadingAssets(true);
       const { data, error } = await supabase
         .from("assets")
-        .select("id, symbol, name, currency, asset_type, market");
+        .select("id, symbol, name, currency, asset_type, market, coingecko_id");
       if (error) {
         setError(error.message);
       } else {
@@ -208,12 +209,13 @@ export default function PricesPage() {
     setSaveMessage(null);
   }
 
-  // Assets with their own auto-refresh — crypto via CoinGecko (D79) and now
-  // foreign stocks via Finnhub — are left out of the picker entirely, since
-  // a manual price here would just be redundant with (and could conflict
-  // with) the automated one.
+  // Assets with their own auto-refresh — crypto via CoinGecko (D79, now
+  // driven by the per-asset coingecko_id column rather than a hardcoded
+  // symbol list) and foreign stocks via Finnhub — are left out of the
+  // picker entirely, since a manual price here would just be redundant
+  // with (and could conflict with) the automated one.
   const selectableAssets = useMemo(
-    () => assets.filter((a) => !hasAutoFetch(a.symbol) && !isForeignStock(a)),
+    () => assets.filter((a) => !hasAutoFetch(a) && !isForeignStock(a)),
     [assets]
   );
 
