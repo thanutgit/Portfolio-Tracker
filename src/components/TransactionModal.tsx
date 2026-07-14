@@ -176,7 +176,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
   // the two server routes it calls (finnhub-search, finnhub-profile).
   const [stockSearchQuery, setStockSearchQuery] = useState("");
   const [stockSearchResults, setStockSearchResults] = useState<
-    { symbol: string; description: string }[]
+    { symbol: string; description: string; verified?: boolean }[]
   >([]);
   const [searchingStocks, setSearchingStocks] = useState(false);
   const [stockSearchError, setStockSearchError] = useState<string | null>(null);
@@ -277,9 +277,16 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
   // not per search keystroke. Every auto-filled field stays a normal,
   // editable input afterward; a missing/empty profile just leaves those
   // blank for manual entry instead of erroring.
-  async function selectStockResult(result: { symbol: string; description: string }) {
+  async function selectStockResult(result: {
+    symbol: string;
+    description: string;
+    verified?: boolean;
+  }) {
     setNewSymbol(result.symbol);
-    setNewName(result.description);
+    // The "verified via direct lookup" fallback has no real company name —
+    // that description is a UI label, not data, so leave Name blank for
+    // manual entry instead of writing the label into it.
+    setNewName(result.verified ? "" : result.description);
     setNewAssetType("stock");
     setStockSearchQuery("");
     setStockSearchResults([]);

@@ -490,3 +490,15 @@ order-sensitive — it needs to replay the transaction history in
 chronological order via a recursive CTE, not a plain aggregate.
 Confirmed impact: `avg_cost`/`cost_basis`/`unrealized_pnl`/
 `total_return` were affected; `quantity`/`market_value`/XIRR were not.
+
+## D112 — `/api/finnhub-search` silently falls back to a `/quote` lookup when `/search` returns nothing, fired in parallel rather than after `/search` fails
+Finnhub's `/search` index sometimes misses a real, valid ticker the
+user already knows. Rather than surfacing that as "not found," the
+route fires `/quote` alongside `/search` whenever the query is
+ticker-shaped (no spaces, ≤5 chars) and, only if `/search` comes back
+empty, checks whether `/quote` returned a live price (`c > 0`) to
+confirm the symbol is real. Kept entirely server-side (per instruction)
+so the client never learns two Finnhub endpoints are involved — it just
+sees one more result, labeled "— verified via direct lookup" so the
+user knows it wasn't a name/description match. Parallel, not
+sequential, so a real ticker's request doesn't pay for two round-trips.

@@ -2323,3 +2323,27 @@
   known, accepted limitation that true intra-day/same-batch ordering
   isn't captured by the schema; `cost_basis` computed directly from the
   running total instead of via `quantity × avg_cost`).
+
+## 2026-07-15 — Finnhub search: silent `/quote` fallback for tickers `/search` misses
+- `/api/finnhub-search` now fires `/search` and (when the query is
+  ticker-shaped — no spaces, ≤5 chars) `/quote` **in parallel**, not
+  sequentially after `/search` fails. If `/search` returns matches,
+  behavior is unchanged. If `/search` returns zero results and the
+  parallel `/quote` shows a live price (`c > 0`), the route returns a
+  single synthetic result — `{ symbol, description: "— verified via
+  direct lookup", verified: true }` — so a real ticker that Finnhub's
+  search index just doesn't index under that exact text still shows up.
+  If `/quote` also comes back empty/errors, the route returns no
+  results (the symbol genuinely doesn't exist); the quote fetch is
+  wrapped in `.catch(() => null)` so its failure can never surface as a
+  hard error on top of a successful (empty) search.
+- All of this merge/fallback logic lives in the API route, per
+  instruction — the client wasn't taught any new search behavior.
+- `TransactionModal.tsx`'s result type gained an optional `verified?:
+  boolean`; `selectStockResult` now leaves the Name field blank when
+  `verified` is true instead of writing the UI label ("— verified via
+  direct lookup") into it as if it were the real company name — sector/
+  country/currency still auto-fill from the follow-up `/api/finnhub-
+  profile` call exactly as before.
+- Verified with `npm run lint` and `npm run build` (both clean, no
+  other routes/pages affected).
