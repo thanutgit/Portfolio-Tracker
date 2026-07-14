@@ -170,3 +170,43 @@ URL.
 reset, email confirmation, OAuth) on Vercel, use the production domain
 or localhost, not a Preview deployment's randomly-generated URL —
 preview URLs change every push and aren't practical to allow-list.
+
+## #8 — `avg_cost` formula (since 0001_init.sql) is wrong for any asset with a buy after a prior sell
+**What happened:** Holdings showed PRINCIPAL VNEQ-A's Avg Cost as
+`13.23335786260057`; hand-calculating the correct weighted-average cost
+from the real 23-row transaction history gave `13.2059` instead — a
+genuine, confirmed data bug, not a display/rounding issue.
+
+**Root cause:** the `holdings` view's original formula —
+```sql
+sum(qty*price+fee where type='buy') / sum(qty where type='buy')
+```
+— computes the *lifetime average purchase price* (every unit ever
+bought, divided by however many were ever bought), not the average cost
+of units *currently held*. It ignores sells entirely. That's only
+mathematically correct if every sell happens strictly after every buy
+for that asset — proven wrong with a minimal example: buy 100@10, sell
+50, buy 100@20 should average to `2500/150 = 16.667`, but the formula
+gives `(1000+2000)/200 = 15`. The moment a buy happens *after* a prior
+sell (e.g. an ongoing DCA fund with an occasional partial redemption),
+the formula silently diverges from the correct answer — no error, no
+warning, just a wrong number that looks plausible.
+
+**Fix:** `migrations/0012_fix_holdings_avg_cost_running_total.sql` (not
+yet applied at time of writing) replays every buy/sell in chronological
+order via a `WITH RECURSIVE` CTE, keeping a running `(quantity,
+total_cost)` state — a sell removes cost proportionally at the running
+average cost *at that point in time*, never the sale price. Verified
+against 5 hand-computable cases (including the exact buy-sell-buy
+pattern above) via an equivalent JS simulation before writing the SQL,
+since the live data couldn't be queried directly (RLS + no login
+credentials — see GOTCHAS.md #7's general credential constraint).
+
+**Prevention:** A weighted-average-cost calculation that only aggregates
+buys and discards sells is a strong smell — the moment sells can be
+interleaved with more buys (not just "sold off at the very end"), the
+calculation needs to be order-sensitive (a running replay), not a flat
+aggregate `SUM()`. Test this kind of formula against an interleaved
+buy/sell/buy sequence specifically, not just "buy a few times, sell at
+the end" — that specific ordering is exactly the case where the wrong
+formula still happens to give the right answer, hiding the bug.

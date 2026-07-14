@@ -2210,3 +2210,116 @@
   cases. Could not visually verify the rendered tables live — every
   page showing these values is behind `<RequireAuth>` (Phase 7), and I
   don't have login credentials for the real account.
+
+## 2026-07-14 — formatUnitPrice() changed from trimmed trailing zeros to fixed 4dp
+- Replaced the trailing-zero-trimming logic in `formatUnitPrice()`
+  (`src/lib/format.ts`, added earlier this session) with a fixed 4
+  decimal places always — `Intl.NumberFormat` with
+  `minimumFractionDigits`/`maximumFractionDigits` both set to 4,
+  rounding down from more decimals and padding zeros for fewer.
+  Prompted by a bug report where a raw, unrounded weighted-average-cost
+  value displayed as `฿13.23335786260057` — the trim-trailing-zeros
+  approach kept every decimal a stored/computed value happened to
+  have, which reads as broken rather than precise when that value
+  isn't a "clean" number to begin with.
+- **No call-site changes needed** — every one of the 8 spots already
+  wired to `formatUnitPrice()` (Holdings' Avg Cost/Last Price,
+  `HistoryModal`'s Transactions-tab Price column and its two "at X per
+  unit" messages, `TransactionModal`'s batch preview line, Prices
+  page's old/new price columns) picked up the new fixed-4dp behavior
+  automatically, exactly as intended by keeping the formatting logic
+  in one shared function.
+- DESIGN.md's "Data display rules" updated to describe fixed 4dp
+  (rounding/padding as needed) instead of the previous trim-trailing-
+  zeros description.
+- Verified via `npm run lint` and `npm run build` (both clean), plus a
+  standalone script confirming all 5 of this round's exact examples
+  (12.2500 → ฿12.2500, 13.45609 → ฿13.4561, 15.82 → ฿15.8200, 14 →
+  ฿14.0000, 13.0219 → ฿13.0219) and re-checking the original bug
+  report's value, which now renders as a clean `฿13.2334` instead of
+  the 14-decimal string. Could not visually verify the rendered tables
+  live — every page showing these values is behind `<RequireAuth>`
+  (Phase 7), and I don't have login credentials for the real account.
+
+## 2026-07-14 — Confirmed and fixed: `avg_cost` used the wrong formula for any asset with a buy after a prior sell
+- **Real bug, not a display issue** (see GOTCHAS.md #8) — the
+  `holdings` view's original `avg_cost` formula
+  (`SUM(buy qty×price+fee)/SUM(buy qty)`, ignoring sells entirely)
+  computes the *lifetime average purchase price*, not the average cost
+  of currently-held units. The two are only the same formula's worth of
+  math if every sell happens strictly after every buy for that asset —
+  proven wrong with a minimal hand-worked case (buy 100@10, sell 50,
+  buy 100@20 → correct average is `2500/150 = 16.667`, but the old
+  formula gives `(1000+2000)/200 = 15`) and confirmed against real
+  data: PRINCIPAL VNEQ-A showed `13.23335786260057`, hand-calculated
+  correct value `13.2059`.
+- **New migration, NOT applied yet**:
+  `migrations/0012_fix_holdings_avg_cost_running_total.sql` — replaces
+  the `holdings` view with a `WITH RECURSIVE` CTE that replays every
+  buy/sell in chronological order (`trade_date`, then `created_at`,
+  then `id` as tiebreakers), keeping a running `(quantity, total_cost)`
+  state per `(portfolio_id, asset_id)`: a buy adds quantity and cost; a
+  sell removes quantity *and* removes cost proportionally at the
+  *running average cost at that point in time* — never the sale price.
+  This can't be expressed as a flat aggregate `SUM()`, since a sell's
+  cost removal depends on the running average computed from every
+  prior row — the same reason a running account balance needs a
+  window/recursive calculation, not a plain sum. Output columns
+  (names, order) are unchanged, so `holdings_with_returns` (which
+  selects `holdings.*`) needs no changes and automatically inherits the
+  fix.
+- **`cost_basis` now computed directly as the running total cost**,
+  not re-derived via `quantity × avg_cost` — mathematically identical
+  but avoids a divide-then-multiply rounding round-trip.
+- The migration file includes a commented-out, **read-only, non-
+  destructive preview query** — the same CTE logic, run standalone
+  against the live data first, showing old (buggy) vs. new (correct)
+  `avg_cost` side by side for every asset that has at least one sell —
+  meant to be run and sanity-checked (including PRINCIPAL VNEQ-A
+  specifically) *before* applying the actual `CREATE OR REPLACE VIEW`
+  statement, given how much depends on this value.
+- **Precise blast-radius check, not just accepting the assumption that
+  "everything downstream is affected"**: confirmed `quantity` and
+  `market_value` were never wrong (a simple net buy-minus-sell sum,
+  order-independent) — only `avg_cost`, `cost_basis`,
+  `unrealized_pnl`, `unrealized_pct`, and (via `holdings_with_returns`)
+  `total_return`/`total_return_pct` were affected. Checked **XIRR**
+  specifically (`loadXirr()` in `holdings/page.tsx`) and confirmed it
+  is **not** affected — it builds cash flows directly from raw
+  transaction prices, and its only `holdings`-derived input is
+  `market_value` (quantity × last price), which never depended on
+  `avg_cost`.
+- **Verified the algorithm, not the live data** (no DB access — same
+  RLS/credentials constraint as prior rounds): wrote an exact JS
+  simulation of the recursive CTE's step-by-step logic and ran it
+  against 5 cases — buys-only (must match the old formula exactly),
+  buys-then-sells with no buy afterward (must also match the old
+  formula — the specific case where the bug doesn't manifest), the
+  buy-sell-buy interspersed case (must diverge from the old formula,
+  matching the proven-wrong hand example above), a buy-with-fee case,
+  and an illustrative constructed scenario shaped like the real report
+  (ending at the same 1437.3001 remaining quantity) to sanity-check
+  direction and magnitude. All 5 passed. Could not validate against
+  PRINCIPAL VNEQ-A's exact real transaction rows, since I can't query
+  them directly — the migration file's read-only preview query is the
+  mechanism for that final real-data confirmation, to be run before
+  the actual view replacement.
+- ARCHITECTURE.md's `holdings` view description rewritten to explain
+  the running-total method and its exact blast radius.
+  `migrations/README.md` updated with the new file. New GOTCHAS.md #8
+  documenting the bug, root cause, fix, and a prevention note (test
+  weighted-average formulas against an interleaved buy/sell/buy
+  sequence specifically, not just "sells at the end").
+- **Not done this round, deliberately**: the migration has not been
+  applied to the live database. Next steps: run the read-only preview
+  query first, confirm PRINCIPAL VNEQ-A (and ideally a few other
+  affected assets) show the expected corrected values, then apply the
+  `CREATE OR REPLACE VIEW` statement.
+- Design decisions worth logging in DECISIONS.md (not yet saved): see
+  the response for this round (recursive CTE kept entirely in the SQL
+  view layer, not an app-side recompute, preserving the "holdings are
+  computed by the DB, never recomputed in app code" rule; same-day
+  transactions tiebroken by `(trade_date, created_at, id)`, with the
+  known, accepted limitation that true intra-day/same-batch ordering
+  isn't captured by the schema; `cost_basis` computed directly from the
+  running total instead of via `quantity × avg_cost`).

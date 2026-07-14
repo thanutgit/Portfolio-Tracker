@@ -68,7 +68,26 @@ Tables:
 Views (computed, read-only):
 - `latest_prices` — newest price per asset.
 - `holdings` — per asset: quantity, avg_cost, last_price, cost_basis,
-  market_value, unrealized_pnl, unrealized_pct. Weighted-average cost.
+  market_value, unrealized_pnl, unrealized_pct. **Proper running
+  weighted-average cost** (migration `0012_fix_holdings_avg_cost_running_
+  total.sql` — NOT yet applied, see DECISIONS.md and GOTCHAS.md): replays
+  every buy/sell in chronological order via a `WITH RECURSIVE` CTE,
+  keeping a running `(quantity, total_cost)` state — a buy adds
+  quantity+cost, a sell removes quantity *and* removes cost proportionally
+  at the running average cost *at that point in time* (never the sale
+  price). This is NOT expressible as a plain aggregate `SUM()`, since a
+  sell's cost removal depends on the running average computed from every
+  prior row for that asset — the original `0001_init.sql` formula
+  (`SUM(buy qty×price+fee)/SUM(buy qty)`, ignoring sells) only happens to
+  match this whenever every sell comes after every buy; it silently
+  diverges the moment a buy occurs after a prior sell (confirmed against
+  real data — see GOTCHAS.md). `quantity`/`market_value` were never wrong
+  (a simple net buy-minus-sell sum, order-independent) — only
+  `avg_cost`/`cost_basis`/`unrealized_pnl`/`unrealized_pct` (and, via
+  `holdings_with_returns`, `total_return`/`total_return_pct`) were
+  affected. XIRR is unaffected — it builds cash flows straight from raw
+  transaction prices, and its only `holdings`-derived input is
+  `market_value`, which never depended on `avg_cost`.
 - `dividend_income` — net dividends received per asset (all-time), from
   `transactions` where `type = 'dividend'`. Convention: `quantity = 1`,
   `price` = gross dividend amount, `tax` = withholding tax. Added Phase 3.

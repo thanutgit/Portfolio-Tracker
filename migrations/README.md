@@ -27,6 +27,7 @@ DECISIONS.md D11).
 | 0009_portfolios_user_id_not_null.sql | Phase 7 step 2 (applied): makes `portfolios.user_id` `not null`. Deliberately its own file, run only after confirming 0008 backfilled every row |
 | 0010_enable_rls.sql | Phase 7 step 2 (applied): enables RLS on `portfolios`/`user_settings` (direct `user_id` check) and `transactions`/`targets`/`portfolio_snapshots` (indirect check via `portfolios.user_id`). `assets`/`prices` intentionally left without RLS — shared across all users |
 | 0011_add_finnhub_price_source.sql | Finnhub foreign-stock price auto-fetch (NOT applied yet — see DECISIONS.md): adds `'finnhub'` as an allowed `prices.source` value, alongside the existing `'manual'`/`'csv'`/`'api'` (the last of which stays CoinGecko's, kept distinct rather than shared, so each row's provider is identifiable later) |
+| 0012_fix_holdings_avg_cost_running_total.sql | Bug fix, NOT applied yet — see GOTCHAS.md and DECISIONS.md: replaces the `holdings` view's `avg_cost` formula with a proper running weighted-average-cost (`WITH RECURSIVE`, replaying buy/sell in chronological order), fixing a real bug where the original 0001 formula (lifetime average buy price, ignoring sells) silently diverges from the correct answer whenever a buy occurs after a prior sell. Contains a commented-out, read-only preview query to run first and compare old vs. new `avg_cost` before applying the actual `CREATE OR REPLACE VIEW` |
 
 ## Applying migrations
 Run the file's contents in the Supabase SQL Editor, in order. There's no

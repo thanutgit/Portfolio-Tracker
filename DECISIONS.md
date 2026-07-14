@@ -465,3 +465,28 @@ calendar itself is meant for mouse/touch use.
 ## D107 — Calendar month/weekday labels stay in English; only the typed format (DD/MM/YYYY) follows Thai convention
 Keeps the scope appropriately sized — no need to translate the whole
 calendar UI.
+
+## D108 — New `formatUnitPrice()`, separate from `formatMoney()`, specifically for per-unit prices (Avg Cost, Last Price, transaction Price)
+A per-unit price (e.g. a NAV or share price) needs different
+decimal-place handling than an aggregate total — the existing fixed
+2dp rule for money values doesn't fit it the same way.
+
+## D109 — Dividend amounts stay on `formatMoney()`, even though they're stored in the same `transactions.price` column as buy/sell prices
+For a dividend row, `price` semantically means the gross total amount
+received, not a per-unit price — matches the existing `dividend_income`
+convention (`quantity = 1`, `price` = gross amount).
+
+## D110 — `formatUnitPrice()` uses fixed 4 decimal places (rounding/padding as needed), not trimmed trailing zeros
+The trim-trailing-zeros approach kept every decimal a raw/unrounded
+stored or computed value happened to have, which made a messy DB
+division result (e.g. a weighted-average cost) display with a long,
+jagged decimal tail that read as broken rather than precise.
+
+## D111 — Fixed `avg_cost` in the `holdings` view with a `WITH RECURSIVE` CTE, replacing the old aggregate `SUM()`
+Confirmed real bug: the old formula computed the lifetime average
+purchase price, not the cost of currently-held units, and was wrong
+every time a buy happened after a prior sell. This is inherently
+order-sensitive — it needs to replay the transaction history in
+chronological order via a recursive CTE, not a plain aggregate.
+Confirmed impact: `avg_cost`/`cost_basis`/`unrealized_pnl`/
+`total_return` were affected; `quantity`/`market_value`/XIRR were not.

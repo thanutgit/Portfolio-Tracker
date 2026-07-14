@@ -23,19 +23,19 @@ export function formatMoney(value: number, currency = "THB") {
 }
 
 // For a per-unit price (Avg Cost, Last Price, a transaction's Price), not
-// an aggregate money amount — trailing zeros are dropped but a
-// significant decimal (e.g. 13.0219) is kept in full, rather than forcing
-// a fixed 2 decimal places like formatMoney. Deliberately NOT used for
-// totals (Market Value, Total Return, P&L, dividend amounts) — those stay
-// on formatMoney's fixed 2dp, since a total's trailing zero is still
-// meaningful (฿100.00, not ฿100).
+// an aggregate money amount — always exactly 4 decimal places, rounding
+// if there are more and padding with zeros if there are fewer. Previously
+// trimmed trailing zeros instead (kept only "significant" decimals), but
+// that made a raw, unrounded DB division result (e.g. a weighted average
+// cost) display with a misleadingly long, jagged decimal tail. Fixed 4dp
+// is simpler and consistent regardless of the underlying value's actual
+// precision. Deliberately NOT used for totals (Market Value, Total
+// Return, P&L, dividend amounts) — those stay on formatMoney's fixed 2dp.
 export function formatUnitPrice(value: number, currency = "THB") {
   const sign = value < 0 ? "-" : "";
-  const trimmed = Number(Math.abs(value)).toString();
-  const decimals = trimmed.includes(".") ? trimmed.split(".")[1].length : 0;
   const formatted = new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4,
   }).format(Math.abs(value));
   return `${sign}${symbolFor(currency)}${formatted}`;
 }
