@@ -8,10 +8,10 @@ import { NewPortfolioModal } from "@/components/NewPortfolioModal";
 import { EditPortfolioModal } from "@/components/EditPortfolioModal";
 import { Toast } from "@/components/Toast";
 import type { HoldingWithReturns, Portfolio } from "@/lib/types";
-import { formatMoney, formatPercent, pnlBadgeClass } from "@/lib/format";
+import { formatCurrencyBreakdown, formatMoney, formatPercent, pnlBadgeClass } from "@/lib/format";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { countDriftedAssets, type DriftHolding, type DriftTarget } from "@/lib/drift";
-import { getFxRatesForPairs, fxPairKey } from "@/lib/fx";
+import { getFxRatesForPairs, fxPairKey, nonBaseCurrencyTotals } from "@/lib/fx";
 import { DriftBadge } from "@/components/DriftBadge";
 import { PageHeader } from "@/components/PageHeader";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -88,6 +88,10 @@ interface PortfolioSummary {
   // above rather than being converted, same "show what we can" approach
   // as Holdings' unpriced-holdings handling. See DECISIONS.md D127-D130.
   fxUnconvertedCount: number;
+  // Raw (unconverted), per-currency totals for every non-base-currency
+  // holding — disclosed alongside totalValue, independent of whether
+  // fxUnconvertedCount is 0 (see D132).
+  currencyBreakdown: { currency: string; amount: number }[];
 }
 
 export default function OverviewPage() {
@@ -197,6 +201,7 @@ export default function OverviewPage() {
       const fxUnconvertedCount = holdings.filter(
         (h) => h.currency !== portfolio.base_currency && fxFailedKeys.has(fxPairKey(h.currency, portfolio.base_currency))
       ).length;
+      const currencyBreakdown = nonBaseCurrencyTotals(holdings, portfolio.base_currency);
       const driftHoldings: DriftHolding[] = holdings.map((h) => ({
         asset_id: h.asset_id,
         market_value: Number(h.market_value ?? 0),
@@ -213,6 +218,7 @@ export default function OverviewPage() {
         totalReturnPct,
         driftedCount,
         fxUnconvertedCount,
+        currencyBreakdown,
       };
     });
 
@@ -279,6 +285,7 @@ export default function OverviewPage() {
                 totalReturnPct,
                 driftedCount,
                 fxUnconvertedCount,
+                currencyBreakdown,
               }) => {
                 const showPercentBadge = holdingsCount > 0 && totalReturnPct !== null;
                 return (
@@ -326,6 +333,11 @@ export default function OverviewPage() {
                     <p className="whitespace-nowrap font-mono text-xl font-medium tabular-nums text-gray-900 dark:text-gray-100">
                       {formatMoney(totalValue, portfolio.base_currency)}
                     </p>
+                    {currencyBreakdown.length > 0 && (
+                      <p className="whitespace-nowrap font-mono text-[10px] tabular-nums text-gray-400 dark:text-gray-500">
+                        ({formatCurrencyBreakdown(currencyBreakdown)})
+                      </p>
+                    )}
                     {(showPercentBadge || !!driftedCount) && (
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         {showPercentBadge && (

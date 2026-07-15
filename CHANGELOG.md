@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-07-15 — Multi-currency: two-line currency display (converted value + native/breakdown detail)
+- Holdings' "Total current value" card now shows a muted second line
+  under the converted total listing each non-base currency actually
+  held, raw amount + ISO code (e.g. `(15.00 HKD + 30.00 USD)`), summed
+  per currency — not shown at all for an all-base-currency portfolio.
+  Overview's per-portfolio card gets the same detail line.
+- The Holdings table's per-row "Current Value" cell now shows a muted
+  second line with the THB-equivalent under a foreign-currency holding's
+  native value (e.g. `$112.32` / `(฿4,027.67)`) — unchanged (single line)
+  for base-currency holdings, reuses the already-cached FX rate, no new
+  API calls.
+- New `nonBaseCurrencyTotals()` in `src/lib/fx.ts`,
+  `formatCurrencyBreakdown()` in `src/lib/format.ts`, and a new `subLine`
+  prop on `SummaryCard`. See DECISIONS.md D132-D135.
+
 ## 2026-07-15 — Multi-currency: convert at display time instead of capturing per-transaction (supersedes step 2)
 - Reverted the previous round's `getFxRate()`-on-submit changes in
   `TransactionModal` and `HistoryModal` — real usage exchanges currency

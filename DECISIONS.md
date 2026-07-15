@@ -707,3 +707,44 @@ suffix appended to the "Annualized Return (XIRR)" `SummaryCard` label
 whenever the selected portfolio holds more than one currency — so the
 number isn't presented as more precise than it actually is, without
 building a fix nobody asked for yet.
+
+## D132 — Multi-currency breakdown lines use the currency CODE after the amount ("15.00 HKD"), not a symbol before it
+Every other money display in the app puts a symbol first (`formatMoney`,
+`฿12,450.00`), which works when exactly one currency is in view. A
+breakdown line can list several different currencies in the same short
+string (`"15.00 HKD + 30.00 USD"`), where symbols alone would be
+ambiguous or visually indistinguishable (e.g. "$" is used by more than
+one currency) — the ISO code disambiguates unambiguously. New
+`formatCurrencyBreakdown()` in `src/lib/format.ts` is deliberately
+separate from `formatMoney()` rather than a mode/flag on it, since the
+two are formatting genuinely different things (one value in a known
+currency vs. several values whose currencies are the point).
+
+## D133 — `SummaryCard` gets a new `subLine` prop, distinct from the existing `suffix`
+`suffix` already existed for an inline same-line addition (e.g. the P&L
+`%` next to the value). The currency breakdown needed a full line BELOW
+the value instead — stacking, not inlining, matches DESIGN.md's existing
+"composite value + its detail render as stacked lines, not one long
+inline string" precedent (Responsive section) and the table's own
+value+%/value+sub-value pattern already used for Unrealized P&L/Total
+Return. Reused the muted small-text treatment already established for
+those table sub-lines (`text-[10px] text-gray-400 dark:text-gray-500`)
+rather than inventing a new muted-text style.
+
+## D134 — The currency breakdown line shows RAW holding composition, independent of whether that currency's FX conversion actually succeeded
+Deliberately not filtered by `fxFailedCurrencies`/`fxUnconvertedCount` —
+even if today's USD rate fails to fetch (so the main total silently
+excludes that holding's value, per D130), the breakdown line still
+truthfully discloses "you hold some USD here," which is arguably MORE
+useful during exactly the failure case, not less. Two independent
+disclosures (banner/inline-count for "totals may be incomplete," and
+breakdown line for "here's what's not-THB in this portfolio") answering
+two different questions, not one mechanism serving both.
+
+## D135 — Per-row "Current Value" only shows the THB-equivalent second line for holdings whose currency differs from the portfolio's base currency, reusing the already-cached `fxRates` from D129 (no new API calls)
+A THB holding's THB-equivalent is itself — showing "฿4,027.67 (฿4,027.67)"
+would be pure noise. When a foreign-currency holding's rate isn't cached
+(fetch failed, or still loading), the row just shows its native-currency
+value alone rather than a broken/placeholder second line — same
+"disclose what's known, don't fake what isn't" approach as the rest of
+this feature.

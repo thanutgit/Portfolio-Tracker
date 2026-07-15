@@ -61,3 +61,25 @@ export async function getFxRatesForPairs(
   });
   return { rates, failed };
 }
+
+// Sums each non-base-currency holding's RAW (unconverted) market_value by
+// currency — for disclosing what a converted total is made of (e.g.
+// "15.00 HKD + 30.00 USD" alongside a THB total), not for the conversion
+// itself (that's getFxRatesForPairs above). Currencies equal to
+// baseCurrency are excluded — restating a THB amount inside a THB total
+// would be redundant. Sorted by currency code for a stable order that
+// doesn't reshuffle between renders.
+export function nonBaseCurrencyTotals(
+  holdings: { currency: string; market_value: string | number | null }[],
+  baseCurrency: string
+): { currency: string; amount: number }[] {
+  const totals = new Map<string, number>();
+  for (const h of holdings) {
+    if (h.currency === baseCurrency) continue;
+    const value = Number(h.market_value ?? 0);
+    totals.set(h.currency, (totals.get(h.currency) ?? 0) + value);
+  }
+  return Array.from(totals.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([currency, amount]) => ({ currency, amount }));
+}

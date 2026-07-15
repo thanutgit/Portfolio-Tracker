@@ -528,6 +528,28 @@ Instead, both **Holdings** (`holdings/page.tsx`) and **Overview**
   inline note (`· FX rate unavailable for N`) next to the holdings count
   instead of a full banner.
 
+**Two-line currency display (D132-D135)**: both pages show a converted
+figure paired with a muted, smaller detail line underneath, rather than
+just the converted number alone:
+- Holdings' "Total current value" hero card gets a `subLine` (new prop
+  on `SummaryCard`, distinct from the existing inline `suffix`) listing
+  every non-base currency actually held, RAW amount (not converted) plus
+  ISO code — e.g. `(15.00 HKD + 30.00 USD)` — via
+  `nonBaseCurrencyTotals()` (`src/lib/fx.ts`) +
+  `formatCurrencyBreakdown()` (`src/lib/format.ts`). Same currencies
+  grouped/summed together, not listed per-holding. Shown regardless of
+  whether that currency's FX conversion into the main total succeeded
+  (D134) — it's disclosing composition, not conversion status. Overview
+  shows the equivalent per portfolio card (doesn't use `SummaryCard`, so
+  it's an inline `<p>` instead of the `subLine` prop, same visual
+  treatment).
+- The Holdings table's per-row "Current Value" cell shows a second,
+  muted line with the THB-equivalent underneath a foreign-currency
+  holding's native value — e.g. `$112.32` over `(฿4,027.67)` — reusing
+  the `fxRates` cache from `loadFxRates()` (D129), no additional API
+  call. A THB holding (or one whose rate isn't cached) shows only its
+  single native-currency line, unchanged from before.
+
 **Known limitation, deliberately not fixed this round (D131): XIRR is
 still not currency-aware.** `loadXirr()`'s cash flows are built straight
 from each transaction's raw `price` in that transaction's own currency,

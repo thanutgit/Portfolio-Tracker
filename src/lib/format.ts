@@ -10,11 +10,21 @@ export function symbolFor(currency: string) {
   return CURRENCY_SYMBOLS[currency] ?? `${currency} `;
 }
 
-function formatAmount(value: number) {
+export function formatAmount(value: number) {
   return new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Math.abs(value));
+}
+
+// Renders a non-base-currency composition breakdown, e.g.
+// "15.00 HKD + 30.00 USD" — currency CODE after the amount (not a
+// symbol before it, unlike formatMoney) since this line can list several
+// different currencies at once and codes disambiguate better than
+// symbols would (e.g. "$" alone is ambiguous across USD/HKD/SGD). See
+// DECISIONS.md.
+export function formatCurrencyBreakdown(items: { currency: string; amount: number }[]): string {
+  return items.map((i) => `${formatAmount(i.amount)} ${i.currency}`).join(" + ");
 }
 
 export function formatMoney(value: number, currency = "THB") {

@@ -19,10 +19,11 @@ import { CHART_COLORS, UNCATEGORIZED_COLOR } from "@/lib/chartColors";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { xirr, type CashFlow } from "@/lib/xirr";
 import { countDriftedAssets, type DriftHolding, type DriftTarget } from "@/lib/drift";
-import { getFxRatesForPairs, fxPairKey } from "@/lib/fx";
+import { getFxRatesForPairs, fxPairKey, nonBaseCurrencyTotals } from "@/lib/fx";
 import { WarningIcon } from "@/components/DriftBadge";
 import type { HoldingWithReturns } from "@/lib/types";
 import {
+  formatCurrencyBreakdown,
   formatDateTime,
   formatMoney,
   formatPercent,
@@ -555,6 +556,15 @@ function HoldingsPageContent() {
   const bySector = groupBySymbolWithSector(holdings, assetInfo);
   const byCountry = groupByDimension(holdings, assetInfo, "country");
 
+  // Composition disclosure under "Total current value" — raw (unconverted)
+  // per-currency totals, not the converted figures used for the card's
+  // main number above. Undefined (not an empty string) when the portfolio
+  // is pure base-currency, so SummaryCard's subLine renders nothing at all
+  // rather than an empty "()" line.
+  const nonBaseTotals = nonBaseCurrencyTotals(holdings, baseCurrency);
+  const currencyBreakdown =
+    nonBaseTotals.length > 0 ? formatCurrencyBreakdown(nonBaseTotals) : undefined;
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <main className={`${CONTAINER_CLASS} py-10`}>
@@ -649,6 +659,7 @@ function HoldingsPageContent() {
                 value={
                   loadingHoldings || loadingFx ? "—" : formatMoney(totalMarketValue, baseCurrency)
                 }
+                subLine={loadingHoldings || loadingFx ? undefined : currencyBreakdown}
                 size="hero"
               />
               <SummaryCard
@@ -759,6 +770,16 @@ function HoldingsPageContent() {
                         const totalRet = h.total_return === null ? null : Number(h.total_return);
                         const totalRetPct =
                           h.total_return_pct === null ? null : Number(h.total_return_pct);
+                        // THB-equivalent shown as a muted second line only
+                        // for a non-base-currency holding — converting a
+                        // THB holding to THB would just repeat the number
+                        // above it. null when no rate is cached (e.g. this
+                        // currency's fetch failed) — same fxRates cache
+                        // loadFxRates already populated, no extra API call.
+                        const convertedMarketValue =
+                          h.market_value === null || h.currency === baseCurrency
+                            ? null
+                            : convertToBase(Number(h.market_value), h.currency);
                         return (
                           <tr
                             key={h.asset_id}
@@ -779,10 +800,25 @@ function HoldingsPageContent() {
                                 ? "—"
                                 : formatUnitPrice(Number(h.last_price), h.currency)}
                             </td>
-                            <td className="whitespace-nowrap px-3 py-3 text-right font-mono text-xs tabular-nums">
-                              {h.market_value === null
-                                ? "—"
-                                : formatMoney(Number(h.market_value), h.currency)}
+                            <td className="px-3 py-3 text-right font-mono text-xs tabular-nums">
+                              {h.market_value === null ? (
+                                "—"
+                              ) : h.currency === baseCurrency ? (
+                                <div className="whitespace-nowrap">
+                                  {formatMoney(Number(h.market_value), h.currency)}
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="whitespace-nowrap">
+                                    {formatMoney(Number(h.market_value), h.currency)}
+                                  </div>
+                                  {convertedMarketValue !== null && (
+                                    <div className="whitespace-nowrap text-[10px] font-normal text-gray-400 dark:text-gray-500">
+                                      ({formatMoney(convertedMarketValue, baseCurrency)})
+                                    </div>
+                                  )}
+                                </>
+                              )}
                             </td>
                             <td
                               className={`px-3 py-3 text-right font-mono text-xs tabular-nums ${pnl === null ? "" : pnlColor(pnl)}`}
