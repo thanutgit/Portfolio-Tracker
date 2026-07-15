@@ -1,5 +1,62 @@
 # Changelog
 
+## 2026-07-15 — Multi-currency: convert at display time instead of capturing per-transaction (supersedes step 2)
+- Reverted the previous round's `getFxRate()`-on-submit changes in
+  `TransactionModal` and `HistoryModal` — real usage exchanges currency
+  well before/after the actual trade, so a trade-date rate wasn't the
+  right number to capture. `fx_rate_to_base` (migration 0014) is kept in
+  the schema, unused. See DECISIONS.md D127-D128.
+- New `getFxRatesForPairs()` / `fxPairKey()` in `src/lib/fx.ts` — dedupes
+  FX lookups to one call per distinct (asset currency, base currency)
+  pair, reports failures instead of throwing.
+- Holdings' and Overview's portfolio-total cards (Total current value,
+  Unrealized P&L, Total return) now convert every non-base-currency
+  holding to the portfolio's `base_currency` using TODAY's rate, cached
+  in state per page load (not refetched on Holdings' 60s crypto poll).
+  A holding whose rate couldn't be fetched contributes 0, disclosed via
+  a banner (Holdings) or inline count (Overview) — never silently
+  wrong, never blocks the page.
+- Verified per-holding display (Avg Cost, Last Price, Market Value, P&L
+  in the Holdings table) already correctly used each asset's own
+  currency — no bug found there, no change needed.
+- XIRR's mixed-currency inaccuracy is now a documented known limitation
+  (code comment + a "· approx." label suffix when the portfolio holds
+  more than one currency), not fixed this round. Rebalancing's own total
+  has the same gap, also not touched. See DECISIONS.md D129-D131.
+
+## 2026-07-15 — Multi-currency support, step 2 (record fx_rate_to_base on new transactions) — REVERTED, see entry above
+- `migrations/0014_add_multicurrency_fx.sql` applied.
+- `TransactionModal` (buy/sell, single + batch) and `HistoryModal`'s
+  "add dividend" form now call `getFxRate()` and store the result in
+  `fx_rate_to_base` on every new row. Batch rows each fetch their own
+  rate independently (different asset/currency/date per row). Fetched
+  after the user confirms, before the insert — a cancelled batch never
+  costs an API call.
+- If any FX lookup fails, the whole save is blocked with a per-row error
+  naming the currency pair and date — no silent fallback to `1`.
+- New two-stage saving indicator ("Fetching exchange rates…" → "Saving…")
+  on both forms' submit buttons.
+- Deliberately out of scope: editing an existing transaction/dividend
+  doesn't recompute `fx_rate_to_base`; no calculation (`holdings`, P&L,
+  XIRR) reads the new column yet; existing rows (including BABA) aren't
+  backfilled. See DECISIONS.md D122-D126.
+
+## 2026-07-15 — Multi-currency support, step 1 (schema prep)
+- `migrations/0014_add_multicurrency_fx.sql` (not yet applied): adds
+  `transactions.fx_rate_to_base` (numeric, nullable) — rate to the
+  portfolio's `base_currency` as of `trade_date`. Discovered
+  `portfolios.base_currency` already existed (`0001_init.sql`) and
+  needed no change; the existing `transactions.fx_rate` column is
+  unused dead code, left untouched. See DECISIONS.md D119-D121.
+- New `src/lib/fx.ts` (`getFxRate(from, to, date)`) + server-side
+  `GET /api/fx-rate`, proxying Frankfurter (frankfurter.dev, free, no
+  API key) — same-currency lookups short-circuit to `1` with no
+  network call.
+- No logic changes this round: no transaction form change, no view
+  change, no backfill of existing transactions (including the real
+  BABA/USD ones that motivated this work). Purely schema + fetch
+  infrastructure.
+
 ## 2026-07-03 — Project scaffold + holdings view (Phase 1)
 - Scaffolded Next.js (App Router) + TypeScript + Tailwind CSS.
 - Added Supabase client (`src/lib/supabase.ts`) reading

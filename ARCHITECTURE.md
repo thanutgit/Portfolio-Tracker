@@ -484,18 +484,64 @@ filters out both `hasAutoFetch()` (crypto) and `isForeignStock()`
 (Finnhub) results, for the same reason: avoid a manual price and an
 auto-fetched one conflicting over the same asset.
 
-**Important caveat — multi-currency totals are not handled anywhere in
-this app yet** (see ROADMAP.md Phase 3, DECISIONS.md): every portfolio
-total (Overview's per-portfolio value, Holdings' "Total current value",
-etc.) is a plain numeric sum of `market_value` across holdings, with no
-FX conversion. Until now this was harmless because every real asset was
-THB. Foreign stocks fetched via Finnhub are priced in their own currency
-(commonly USD) — holding one alongside THB assets in the same portfolio
-will make that portfolio's aggregate totals numerically wrong (adding
-USD and THB figures as if they were the same unit), not just imprecise.
-This isn't fixed as part of this feature (a real FX layer is a separate,
-larger piece of work) — flagged here so it's not mistaken for a bug
-report later.
+**Multi-currency approach: convert only at portfolio-total display time,
+using today's rate — never captured per-transaction.** An earlier round
+tried capturing an FX rate per transaction at write time
+(`transactions.fx_rate_to_base`, `migrations/0014_add_multicurrency_fx.sql`,
+applied); reverted because real usage doesn't exchange currency on the
+same day as the stock trade, so a trade-date rate wasn't actually the
+number that matters — see DECISIONS.md D127 for the full reasoning.
+`fx_rate_to_base` still exists on `transactions` (nullable, unused,
+kept rather than dropped — D128) but nothing reads or writes it.
+`TransactionModal`/`HistoryModal` are back to recording a transaction's
+`price` in the asset's own currency, no FX involved at write time at all.
+
+Instead, both **Holdings** (`holdings/page.tsx`) and **Overview**
+(`page.tsx`) convert their own portfolio-total cards
+(Total current value, Unrealized P&L, Total return) at render time:
+- `getFxRatesForPairs(pairs, date)` in `src/lib/fx.ts` — dedupes a list
+  of `{ from, to }` currency pairs to one `getFxRate()` call per distinct
+  pair (so N holdings sharing one non-base currency cost one Frankfurter
+  round-trip, not N — see D129), and returns both the successful rates
+  (as a `Map`, keyed via the exported `fxPairKey(from, to)` helper) and
+  the pairs that failed, rather than throwing.
+- Holdings fetches once per non-silent load (`loadFxRates()`, called
+  alongside `loadXirr`/`loadDrift` etc. inside `loadHoldings`), keyed on
+  today's date and the selected portfolio's `base_currency`, and caches
+  the result in `fxRates` state (`Map<string, number>`) — reused across
+  renders, not refetched on every 60s silent crypto-price tick.
+  `convertToBase(value, currency)` returns the value unchanged if
+  `currency === baseCurrency`, `value * rate` if a rate is cached, or
+  `null` if the currency isn't base and no rate was fetched/succeeded —
+  `null`, not `0`, so "couldn't convert" stays distinguishable from
+  "converts to zero" at the summing call site (`?? 0` is added
+  explicitly only where the totals are summed — see GOTCHAS.md #6). A
+  holding whose currency's rate couldn't be fetched contributes 0 to the
+  totals, disclosed via a banner (same style/precedent as the existing
+  unpriced-holdings banner, D63) rather than blocking the page (D130).
+- Overview does the equivalent inside `loadSummaries()`, collecting FX
+  pairs across *all* portfolios before one `getFxRatesForPairs()` call
+  (so two portfolios both holding USD against a THB base still cost only
+  one Frankfurter lookup), then converting each portfolio's own totals
+  using its own `base_currency`. Its per-portfolio card is more compact
+  than Holdings' banner, so an unconvertible holding shows as a small
+  inline note (`· FX rate unavailable for N`) next to the holdings count
+  instead of a full banner.
+
+**Known limitation, deliberately not fixed this round (D131): XIRR is
+still not currency-aware.** `loadXirr()`'s cash flows are built straight
+from each transaction's raw `price` in that transaction's own currency,
+summed as if every flow were the same unit — same underlying issue the
+totals above now handle, but fixing XIRR would mean converting each
+historical cash flow at *its own* trade-date rate (the exact
+per-transaction FX capture D127 just moved away from) or re-fetching a
+historical rate live on every computation. Flagged via a code comment on
+`loadXirr()` and a "· approx." suffix on the "Annualized Return (XIRR)"
+card label whenever the selected portfolio holds more than one currency.
+
+Rebalancing's own portfolio total (`rebalancing/page.tsx`) has the same
+naive-sum issue and was **not** touched this round — out of the literal
+scope asked for (Holdings + Overview only).
 
 ## Manual price entry (Prices page)
 `src/app/prices/page.tsx` has two entry modes, switched via a tab (no route

@@ -555,3 +555,155 @@ to trip over later.
 Lets a legacy or manually-entered crypto asset be backfilled for
 CoinGecko auto-refresh directly from the UI, instead of needing a
 hand-written SQL `UPDATE` every time.
+
+## D119 — Multi-currency step 1: no migration needed for `portfolios.base_currency`
+Discovered it already exists (`0001_init.sql`, `char(3) not null default
+'THB'`) and is already read throughout the app (`usePortfolios`,
+Holdings, Rebalancing, Overview, `NewPortfolioModal`/`EditPortfolioModal`).
+The ask to "add `base_currency` to `portfolios`" was based on a stale
+assumption — nothing to do here, so `migrations/0014` only touches
+`transactions`.
+
+## D120 — New `transactions.fx_rate_to_base` column instead of reusing the existing (also pre-existing) `transactions.fx_rate`
+`fx_rate` has existed since `0001_init.sql` but is dead code — never
+read or written by any app code. It also can't serve the "not yet
+backfilled" signal this feature needs: it's `not null default 1`, so
+every existing row (including the real BABA/USD transactions this whole
+effort is meant to fix) already carries a value of `1`, indistinguishable
+from a genuine, verified 1:1 THB-to-THB rate. A new nullable column
+(`fx_rate_to_base`) is added instead, so `NULL` means exactly one thing:
+"no FX rate recorded yet." The old `fx_rate` column is left in place,
+untouched — dropping unused-but-pre-existing columns is a separate
+decision, not bundled into this schema-prep round.
+
+## D121 — `src/lib/fx.ts` calls a new server-side `/api/fx-rate` route rather than hitting Frankfurter directly from the client
+Frankfurter needs no API key, so there's no secret to protect here —
+but routing through a Next.js API route keeps the external-call pattern
+identical to the existing Finnhub integration (`/api/finnhub-search`,
+`/api/finnhub-profile`, `/api/refresh-stock-prices`), and leaves room to
+add caching or rate-limiting centrally later without touching every call
+site. The same-currency (`from === to`) short-circuit lives in
+`src/lib/fx.ts` itself, so the common case (THB transaction in a
+THB-base portfolio) never even reaches the network.
+
+## D122 — FX rates are fetched only after the user confirms the batch, not while they're still editing rows
+**Superseded by D127**: this whole per-transaction `fx_rate_to_base`-capture
+approach (D122-D126) was reverted one round later — real usage doesn't
+exchange currency on the same day as the stock trade, so a trade-date
+rate wasn't actually the right number to capture. Kept below for the
+historical record of what was tried and why it didn't fit; see D127.
+
+`TransactionModal`'s existing flow already builds a confirm-dialog
+preview (oversell/tax-holding warnings) before anything touches the
+database. Fetching `fx_rate_to_base` earlier — e.g. live per-row as the
+user types — would fire a Frankfurter round-trip per keystroke-adjacent
+edit and burn API calls on rows that get cancelled or edited further.
+Fetching it right after confirm, immediately before the insert, means a
+cancelled batch never costs a single FX lookup.
+
+## D123 — Batch rows fetch FX rates independently, in parallel, with no dedup for repeated (currency, date) pairs
+Matches the literal ask: each row may be a different asset/currency/date,
+so each gets its own `getFxRate()` call via `Promise.allSettled` (not
+`Promise.all`, so one failing row's error doesn't hide the others' results
+— every failing row gets reported, not just the first). Two rows that
+happen to share the same currency and date do issue two Frankfurter
+calls rather than one cached lookup — deduping would add real complexity
+(a cache keyed on currency+date, invalidation once the batch changes) for
+a case (multiple foreign-currency rows on the same day, same batch) that's
+rare in a personal portfolio. Revisit only if this turns out to matter in
+practice.
+
+## D124 — Editing an existing transaction/dividend does NOT recompute `fx_rate_to_base`, even if `trade_date` changes
+Scoped deliberately to match the ask ("record it correctly starting at
+creation," not "keep it correct forever"). `HistoryModal`'s edit-buy/sell
+form (`handleTxnSubmit`) and edit-dividend form (`handleDividendSubmit`'s
+`editingDividendId` branch) both leave `fx_rate_to_base` untouched on
+`.update()`. **Known gap**: editing a foreign-currency transaction's
+`trade_date` after the fact leaves its `fx_rate_to_base` stale (still
+tied to the original date), which is a smaller, narrower version of the
+exact staleness bug this whole feature exists to fix. Not addressed this
+round — flagged here so it isn't mistaken for an oversight later; revisit
+when edit-time FX recomputation is explicitly asked for.
+
+## D125 — No fallback to `1` when a Frankfurter lookup fails; the whole batch is blocked instead
+A silent fallback would reproduce the exact bug that motivated this
+feature (the old `transactions.fx_rate` column's `not null default 1`
+making every foreign-currency row look like a verified 1:1 rate — see
+`migrations/0014`). Both `TransactionModal` (batch buy/sell) and
+`HistoryModal` (new dividend) surface a specific per-row error naming the
+currency pair and date, and refuse to insert until the lookup succeeds.
+
+## D126 — Two-stage saving indicator ("Fetching exchange rates…" → "Saving…") instead of a single generic "Saving…"
+A Frankfurter round-trip (~1-2s) is a materially different wait than the
+Supabase insert that follows it. Collapsing both into one "Saving…" label
+would look like a stall with no explanation, especially for a
+multi-row batch triggering several sequential-looking Frankfurter calls.
+`TransactionModal.savingStage` and `HistoryModal.savingDividendStage`
+(`"fx" | "insert" | null`) drive both the button label and the disabled
+state, replacing what used to be a plain boolean in each.
+
+## D127 — Multi-currency: convert only at portfolio-total display time, using TODAY's rate — not at transaction creation time, using the trade-date rate (supersedes D122-D126)
+**Why the change of mind**: D122-D126's approach assumed the FX rate
+that matters for a foreign-currency purchase is the rate on the trade's
+own `trade_date`. Real usage doesn't work that way — someone typically
+exchanges a chunk of THB into USD once, holds that USD balance, and buys
+foreign stocks out of it over time on dates that have nothing to do with
+when the exchange happened. A `trade_date` FX rate would be a real,
+verifiable number, but not the number that's actually true for the
+user's own cash flow — capturing it at creation added API calls,
+blocking-error UX, and a whole `fx_rate_to_base`-per-transaction data
+model for a figure that doesn't represent reality any better than not
+having it. Converting only at the moment a portfolio *total* is
+displayed, using today's rate, is honest about being a live
+mark-to-market approximation rather than pretending to be a precise
+historical record — and it's simpler: no new data captured on write, no
+risk of a batch insert being blocked by a flaky FX API. `TransactionModal`
+and `HistoryModal` are reverted to their pre-D122 state (plain price in
+the asset's own currency, no FX involved at write time at all).
+
+## D128 — `transactions.fx_rate_to_base` (migration 0014) is kept, unused, rather than dropped
+The column is harmless — nullable, no default, nothing reads or writes
+it now that D127 reverted the write path. Dropping it and potentially
+re-adding something similar later would be more migration churn than
+leaving one unused nullable column in place. Revisit only if a future,
+genuinely different feature needs it (e.g. an explicit "currency
+exchange" transaction type, or a deliberate historical-cost-basis-in-
+base-currency project) — same "leave it, note it, don't chase it" call
+already made for the older, also-unused `fx_rate` column (D120).
+
+## D129 — New `getFxRatesForPairs()` helper in `src/lib/fx.ts`, shared by Holdings and Overview
+Both pages need the exact same behavior: given a list of (asset currency,
+portfolio base currency) pairs, dedupe to one `getFxRate()` call per
+distinct pair (e.g. five USD holdings in one THB portfolio cost one
+Frankfurter round-trip, not five — two portfolios both holding USD
+against a THB base still only cost one, since Overview collects pairs
+across all portfolios before fetching), and report which pairs failed
+instead of throwing, so a caller can total up what it can. Written once
+and imported by both rather than duplicated.
+
+## D130 — A holding whose currency's FX rate couldn't be fetched contributes 0 to totals, disclosed rather than silently dropped or blocking the page
+Same "show what's known, disclose what isn't" precedent as D63's
+unpriced-holdings handling — a total that's honestly incomplete and says
+so beats no total at all, and nothing destructive happens if a total is
+briefly off after a network hiccup. The disclosure mechanism differs by
+page density: Holdings gets a full banner (matching the existing
+unpriced-holdings banner exactly, same InfoIcon/style); Overview's
+compact card list gets a smaller inline note (`· FX rate unavailable for
+N`) next to the holdings count instead of a new banner component, since
+a full banner per card would be disproportionate to the card's size.
+`convertToBase()` (Holdings) and its Overview equivalent both return
+`null` (not `0`) for "couldn't convert," and callers add `?? 0`
+explicitly only at the point they sum — keeps the "unknown" vs. "known
+to be zero" distinction visible in the count, per GOTCHAS.md #6.
+
+## D131 — XIRR's mixed-currency inaccuracy is documented as a known limitation this round, not fixed
+Fixing it properly would mean converting every historical cash flow at
+its OWN trade-date rate — exactly the trade-date-FX-capture complexity
+D127 just decided against for the ledger itself (or refetching a
+historical rate live on every XIRR computation, which is its own can of
+worms). Out of scope for this round. Flagged two ways: a code comment on
+`loadXirr()` in `holdings/page.tsx` explaining the gap, and a "· approx."
+suffix appended to the "Annualized Return (XIRR)" `SummaryCard` label
+whenever the selected portfolio holds more than one currency — so the
+number isn't presented as more precise than it actually is, without
+building a fix nobody asked for yet.

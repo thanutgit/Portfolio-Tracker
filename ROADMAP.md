@@ -14,10 +14,18 @@ _(original requirement #3)_
 
 ## Phase 3 — accurate returns (mostly done)
 Dividends / total return, CSV/paste price import, multi-dimension
-allocation (sector / country) — all done. Multi-currency + FX, and
-allocation by currency, deliberately not done yet: every asset is THB
-today, so there's nothing to convert or break out by currency until a
-non-THB holding exists.
+allocation (sector / country) — all done. Multi-currency + FX: portfolio
+totals on Holdings and Overview now convert non-base-currency holdings
+to the portfolio's `base_currency` using today's FX rate at display
+time (Frankfurter, via `src/lib/fx.ts`) — see ARCHITECTURE.md's
+"Multi-currency approach" and DECISIONS.md D127-D131. An earlier
+per-transaction FX-capture approach (D119-D126) was tried and reverted —
+doesn't match real usage (currency exchanged well before/after the
+actual trade). Per-holding display (Avg Cost, Last Price, etc.) already
+correctly showed each asset's own currency, unrelated to this change.
+Known gaps: XIRR still isn't currency-aware (D131), Rebalancing's own
+total wasn't touched this round. Allocation by currency still not
+started.
 
 ## Phase 4 — history & benchmark (done)
 `portfolio_snapshots` (done), the growth/trend chart on Holdings (done,
