@@ -525,6 +525,24 @@ UI/app-layer only. `HistoryModal` needs no equivalent check — it only
 edits/deletes transactions for an asset that's already attached to the
 portfolio, never attaches a new one.
 
+**Choosing a portfolio's currency** (`NewPortfolioModal`): a "Currency"
+dropdown alongside the name field, saved to `base_currency` on insert.
+Options are THB and USD (always offered, even before any asset exists)
+plus whatever other currencies are already live in `assets.currency`
+(queried on open, deduped) — not a hardcoded list of every world
+currency, since the app only needs to cover what's actually in use. See
+DECISIONS.md D142 for why this differs from `src/lib/assets.ts`'s
+separate `CURRENCIES` constant (used by the asset-creation forms, a
+different question). No edit path after creation — matches D136's "an
+asset needing a different currency goes into a new portfolio" stance;
+`EditPortfolioModal` only renames.
+
+Currency is now shown wherever a portfolio is identified:
+`PortfolioLabel` (Holdings/Rebalancing/Targets page headers) takes a
+`currency` prop rendered as a small neutral pill next to the name, and
+Overview's portfolio cards show `{holdingsCount} holdings ·
+{base_currency}`.
+
 **Removed: display-time FX conversion (D119-D135).** An earlier
 direction supported a portfolio actually holding multiple currencies,
 converting for display rather than preventing the mix — kept for one

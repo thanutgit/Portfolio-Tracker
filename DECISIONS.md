@@ -857,3 +857,39 @@ churn than one unused nullable column). `TransactionModal`'s
 (D136-D140) are UNRELATED to this removal and were kept — that's a
 different mechanism (prevention, not conversion) built on top of the
 same `base_currency` column, not part of what got deleted here.
+
+## D142 — `NewPortfolioModal`'s currency dropdown is seeded from real `assets.currency` values, not a hardcoded world-currency list
+
+D136's single-currency-per-portfolio model made `portfolios.base_currency`
+load-bearing at creation time — before this round it was silently
+hardcoded to `"THB"` on insert with no UI to choose otherwise, so
+creating e.g. a USD portfolio required a manual DB edit. Options: (a)
+reuse `src/lib/assets.ts`'s existing `CURRENCIES` constant
+(`["THB", "USD", "EUR", "GBP", "JPY"]`, used by the asset-creation
+forms), or (b) query `assets.currency` for whatever currencies are
+actually in use and offer those. Chose (b), per explicit instruction:
+always offer THB (default) and USD (most likely second currency) even
+if unused yet, plus anything else already live in `assets` (e.g. HKD,
+from BABA) — a real, growing use case, not a maintained list trying to
+cover every world currency the app will probably never need. `THB`/
+`USD` stay hardcoded as a floor so the dropdown isn't empty/THB-only on
+a fresh DB with no assets yet; everything past that is derived, not
+maintained by hand. `src/lib/assets.ts`'s `CURRENCIES` constant is
+untouched — it's a different, deliberately curated list for the
+asset-creation forms (manual entry's Currency field), not portfolios;
+the two lists diverging is fine since they answer different questions
+("what currency is this new asset?" vs. "what currencies already exist
+in the system?").
+
+Currency has no edit path after creation, matching D136's stance
+directly — an asset needing a different currency goes into a new
+portfolio, a portfolio's currency doesn't change to fit an asset.
+`EditPortfolioModal` (rename) was intentionally left untouched.
+
+Currency is now shown next to the portfolio name/total wherever a
+portfolio is identified in the UI — `PortfolioLabel` (shared by
+Holdings/Rebalancing/Targets headers) gained a required `currency`
+prop rendered as a small neutral pill, and Overview's portfolio cards
+append `· {base_currency}` after the holdings count. Neutral gray, not
+one of DESIGN.md's semantic palettes (P&L green/red, drift amber) —
+currency is identifying information, not a status or a value judgment.

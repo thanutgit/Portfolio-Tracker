@@ -260,7 +260,8 @@ export default function OverviewPage() {
                       </button>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {holdingsCount} holding{holdingsCount === 1 ? "" : "s"}
+                      {holdingsCount} holding{holdingsCount === 1 ? "" : "s"} ·{" "}
+                      {portfolio.base_currency}
                     </p>
                   </div>
                 </div>

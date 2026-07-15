@@ -148,7 +148,10 @@ function TargetsPageContent() {
           <EmptyState title="No portfolios yet" description="Create a portfolio to get started." />
         ) : (
           <>
-            <PortfolioLabel name={portfolios.find((p) => p.id === selectedId)?.name ?? ""} />
+            <PortfolioLabel
+              name={portfolios.find((p) => p.id === selectedId)?.name ?? ""}
+              currency={portfolios.find((p) => p.id === selectedId)?.base_currency ?? "THB"}
+            />
 
             {loading ? (
               <p className="text-sm text-gray-500 dark:text-gray-400">Loading holdings…</p>

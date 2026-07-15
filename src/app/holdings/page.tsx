@@ -504,7 +504,7 @@ function HoldingsPageContent() {
           />
         ) : (
           <>
-            <PortfolioLabel name={selectedPortfolio?.name ?? ""} />
+            <PortfolioLabel name={selectedPortfolio?.name ?? ""} currency={baseCurrency} />
 
             {!!driftedCount && (
               <Link

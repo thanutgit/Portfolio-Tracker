@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-16 — New portfolios pick their currency at creation
+- `NewPortfolioModal` gained a "Currency" dropdown next to the name
+  field, saved to `portfolios.base_currency` on insert — previously
+  hardcoded to `"THB"` with no way to create a foreign-currency
+  portfolio from the UI at all.
+- Options: THB and USD always offered (even before any asset exists),
+  plus any other currency already live in `assets.currency` (e.g. HKD,
+  if a BABA-like asset exists) — queried on open, not a hardcoded list
+  of every world currency. See DECISIONS.md D142.
+- No edit path after creation — matches D136's single-currency-per-
+  portfolio model: an asset needing a different currency goes into a
+  new portfolio, the portfolio's currency doesn't change to fit it.
+  `EditPortfolioModal` (rename) is untouched.
+- Currency is now shown wherever a portfolio is identified: added a
+  required `currency` prop to `PortfolioLabel` (Holdings/Rebalancing/
+  Targets page headers, rendered as a small neutral pill) and appended
+  `· {base_currency}` after the holdings count on Overview's portfolio
+  cards.
+- `npx tsc --noEmit` and `npm run lint` both clean.
+
 ## 2026-07-16 — Multi-currency: deleted the display-time FX conversion code entirely
 - Removed everything built for D127-D135's "convert mixed currencies for
   display" approach, now that D136's validation makes it structurally

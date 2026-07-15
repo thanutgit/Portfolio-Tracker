@@ -164,7 +164,7 @@ function RebalancingPageContent() {
           <EmptyState title="No portfolios yet" description="Create a portfolio to get started." />
         ) : (
           <>
-            <PortfolioLabel name={selectedPortfolio?.name ?? ""} />
+            <PortfolioLabel name={selectedPortfolio?.name ?? ""} currency={baseCurrency} />
 
             {loading ? (
               <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>

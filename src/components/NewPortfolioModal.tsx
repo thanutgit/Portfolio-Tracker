@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Portfolio } from "@/lib/types";
 
@@ -9,10 +9,40 @@ interface Props {
   onCreated: (portfolio: Portfolio) => void;
 }
 
+// Always offered, even if no asset in the system uses them yet — THB is
+// the app's default/recommended currency and USD is the most common
+// foreign one. Anything beyond these two only appears once a real asset
+// with that currency exists (see loadCurrencyOptions below) — deliberately
+// not a long hardcoded list of every world currency, since this app only
+// needs to cover currencies actually in use.
+const DEFAULT_CURRENCIES = ["THB", "USD"];
+
+function sortCurrencies(currencies: Iterable<string>) {
+  return Array.from(new Set(currencies)).sort((a, b) => {
+    if (a === "THB") return -1;
+    if (b === "THB") return 1;
+    if (a === "USD") return -1;
+    if (b === "USD") return 1;
+    return a.localeCompare(b);
+  });
+}
+
 export function NewPortfolioModal({ onClose, onCreated }: Props) {
   const [name, setName] = useState("");
+  const [currency, setCurrency] = useState("THB");
+  const [currencyOptions, setCurrencyOptions] = useState<string[]>(DEFAULT_CURRENCIES);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadCurrencyOptions() {
+      const { data } = await supabase.from("assets").select("currency");
+      setCurrencyOptions(
+        sortCurrencies([...DEFAULT_CURRENCIES, ...(data ?? []).map((a) => a.currency)])
+      );
+    }
+    loadCurrencyOptions();
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,7 +61,7 @@ export function NewPortfolioModal({ onClose, onCreated }: Props) {
     const { data: sessionData } = await supabase.auth.getSession();
     const { data, error } = await supabase
       .from("portfolios")
-      .insert({ name: trimmed, base_currency: "THB", user_id: sessionData.session?.user.id })
+      .insert({ name: trimmed, base_currency: currency, user_id: sessionData.session?.user.id })
       .select("id, name, base_currency")
       .single();
     if (error) {
@@ -57,7 +87,9 @@ export function NewPortfolioModal({ onClose, onCreated }: Props) {
           New portfolio
         </h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Base currency defaults to THB.
+          Every asset added to this portfolio must be priced in the same
+          currency. This can&apos;t be changed later — create a separate
+          portfolio for a different currency.
         </p>
 
         {error && (
@@ -80,6 +112,23 @@ export function NewPortfolioModal({ onClose, onCreated }: Props) {
               placeholder="e.g. Retirement"
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950"
             />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
+              Currency
+            </label>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="w-full cursor-pointer rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950"
+            >
+              {currencyOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
