@@ -19,11 +19,9 @@ import { CHART_COLORS, UNCATEGORIZED_COLOR } from "@/lib/chartColors";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { xirr, type CashFlow } from "@/lib/xirr";
 import { countDriftedAssets, type DriftHolding, type DriftTarget } from "@/lib/drift";
-import { getFxRatesForPairs, fxPairKey, nonBaseCurrencyTotals } from "@/lib/fx";
 import { WarningIcon } from "@/components/DriftBadge";
 import type { HoldingWithReturns } from "@/lib/types";
 import {
-  formatCurrencyBreakdown,
   formatDateTime,
   formatMoney,
   formatPercent,
@@ -173,14 +171,6 @@ function HoldingsPageContent() {
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
-  // Portfolio totals convert every non-base-currency holding using TODAY's
-  // rate (not each transaction's trade_date rate — see DECISIONS.md D127
-  // for why: real FX usage doesn't line up with trade dates). Keyed by
-  // fxPairKey(assetCurrency, baseCurrency) and fetched once per distinct
-  // pair, not once per holding — see loadFxRates below.
-  const [fxRates, setFxRates] = useState<Map<string, number>>(new Map());
-  const [fxFailedCurrencies, setFxFailedCurrencies] = useState<Set<string>>(new Set());
-  const [loadingFx, setLoadingFx] = useState(false);
 
   async function loadHoldings(signal?: { cancelled: boolean }, silent = false) {
     if (!selectedId) return;
@@ -206,41 +196,12 @@ function HoldingsPageContent() {
         autoSnapshotIfMissing(selectedId, data ?? []);
         loadAssetInfo(data ?? []);
         loadSnapshots(selectedId);
-        // Uses the SAME naive (unconverted) sum XIRR always has — XIRR's
-        // own mixed-currency limitation is separate, see loadXirr below.
         const totalMV = (data ?? []).reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
         loadXirr(selectedId, totalMV);
         loadDrift(selectedId, data ?? []);
-        loadFxRates(data ?? [], baseCurrency);
       }
     }
     if (!silent) setLoadingHoldings(false);
-  }
-
-  // Portfolio-total currency conversion (Multi-currency step 3 — see
-  // DECISIONS.md D127-D130, supersedes D122-D126's per-transaction
-  // approach). Fetches one rate per distinct non-base currency actually
-  // held, today's date, and caches it in fxRates for this render cycle —
-  // reused by every holding sharing that currency rather than refetched.
-  // A pair that fails to fetch is recorded in fxFailedCurrencies so the
-  // affected holdings can be excluded from totals with a disclosed count
-  // (same "show what we can, disclose what we can't" philosophy as D63's
-  // unpriced-holdings banner) instead of blocking the whole page.
-  async function loadFxRates(holdingsData: HoldingWithReturns[], portfolioBaseCurrency: string) {
-    const pairs = [...new Set(holdingsData.map((h) => h.currency))]
-      .filter((c) => c !== portfolioBaseCurrency)
-      .map((c) => ({ from: c, to: portfolioBaseCurrency }));
-    if (pairs.length === 0) {
-      setFxRates(new Map());
-      setFxFailedCurrencies(new Set());
-      return;
-    }
-    setLoadingFx(true);
-    const today = new Date().toISOString().slice(0, 10);
-    const { rates, failed } = await getFxRatesForPairs(pairs, today);
-    setFxRates(rates);
-    setFxFailedCurrencies(new Set(failed.map((f) => f.from)));
-    setLoadingFx(false);
   }
 
   // Money-weighted annualized return (XIRR): every buy/sell/dividend for
@@ -249,15 +210,6 @@ function HoldingsPageContent() {
   // current total market value. Only recomputed on non-silent loads (same
   // reasoning as auto-snapshot/asset-info: no need to redo this on every
   // 60s crypto-price tick).
-  //
-  // KNOWN LIMITATION (multi-currency): every cash flow's `amount` is built
-  // straight from each transaction's raw `price`, in that transaction's
-  // own asset currency, with no FX conversion — so a portfolio holding
-  // more than one currency sums flows across currencies as if they were
-  // the same unit, same underlying issue as the totals this page shows
-  // (see DECISIONS.md D127-D130). Not fixed this round — flagged in the
-  // UI via a "· approx." label suffix when the portfolio holds more than
-  // one currency (see hasMixedCurrencies below).
   async function loadXirr(portfolioId: string, totalMarketValue: number) {
     setLoadingXirr(true);
     const { data, error } = await supabase
@@ -511,59 +463,23 @@ function HoldingsPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  // Converts a value already in `currency` into the portfolio's
-  // base_currency using today's cached rate — null when the currency
-  // isn't the base and no rate is available yet/failed (see
-  // fxFailedCurrencies), so callers can tell "converts to 0" apart from
-  // "can't convert this one."
-  function convertToBase(value: number, currency: string): number | null {
-    if (currency === baseCurrency) return value;
-    const rate = fxRates.get(fxPairKey(currency, baseCurrency));
-    return rate === undefined ? null : value * rate;
-  }
-
-  const totalMarketValue = holdings.reduce((sum, h) => {
-    const converted = convertToBase(Number(h.market_value ?? 0), h.currency);
-    return sum + (converted ?? 0);
-  }, 0);
-  const totalCostBasis = holdings.reduce((sum, h) => {
-    const converted = convertToBase(Number(h.cost_basis ?? 0), h.currency);
-    return sum + (converted ?? 0);
-  }, 0);
-  const totalPnl = holdings.reduce((sum, h) => {
-    const raw = h.unrealized_pnl === null ? 0 : Number(h.unrealized_pnl);
-    const converted = convertToBase(raw, h.currency);
-    return sum + (converted ?? 0);
-  }, 0);
+  const totalMarketValue = holdings.reduce(
+    (sum, h) => sum + Number(h.market_value ?? 0),
+    0
+  );
+  const totalCostBasis = holdings.reduce((sum, h) => sum + Number(h.cost_basis ?? 0), 0);
+  const totalPnl = holdings.reduce((sum, h) => sum + Number(h.unrealized_pnl ?? 0), 0);
   const totalPnlPct = totalCostBasis !== 0 ? (totalPnl / totalCostBasis) * 100 : null;
-  const totalReturn = holdings.reduce((sum, h) => {
-    const raw = h.total_return === null ? 0 : Number(h.total_return);
-    const converted = convertToBase(raw, h.currency);
-    return sum + (converted ?? 0);
-  }, 0);
+  const totalReturn = holdings.reduce((sum, h) => sum + Number(h.total_return ?? 0), 0);
   const totalReturnPct = totalCostBasis !== 0 ? (totalReturn / totalCostBasis) * 100 : null;
   // Holdings with no price contribute 0 to the totals above (there's no
   // better number to sum) — this note discloses that the totals may
   // understate reality, rather than letting a silently-0 contribution
   // look like a complete, accurate figure.
   const unpricedCount = holdings.filter((h) => h.last_price === null).length;
-  // Same disclosure pattern, for holdings whose currency's FX rate to
-  // base_currency couldn't be fetched (see loadFxRates) — also
-  // contributes 0 to the totals above rather than blocking the page.
-  const fxUnconvertedCount = holdings.filter((h) => fxFailedCurrencies.has(h.currency)).length;
-  const hasMixedCurrencies = new Set(holdings.map((h) => h.currency)).size > 1;
 
   const bySector = groupBySymbolWithSector(holdings, assetInfo);
   const byCountry = groupByDimension(holdings, assetInfo, "country");
-
-  // Composition disclosure under "Total current value" — raw (unconverted)
-  // per-currency totals, not the converted figures used for the card's
-  // main number above. Undefined (not an empty string) when the portfolio
-  // is pure base-currency, so SummaryCard's subLine renders nothing at all
-  // rather than an empty "()" line.
-  const nonBaseTotals = nonBaseCurrencyTotals(holdings, baseCurrency);
-  const currencyBreakdown =
-    nonBaseTotals.length > 0 ? formatCurrencyBreakdown(nonBaseTotals) : undefined;
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
@@ -644,48 +560,34 @@ function HoldingsPageContent() {
               </div>
             )}
 
-            {fxUnconvertedCount > 0 && (
-              <div className="mb-6 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-900/60 dark:text-gray-400">
-                <InfoIcon />
-                <span>
-                  {`Couldn't fetch a current exchange rate for ${fxUnconvertedCount} asset${fxUnconvertedCount === 1 ? "" : "s"} — the totals below don't include ${fxUnconvertedCount === 1 ? "its" : "their"} value. Reload to try again.`}
-                </span>
-              </div>
-            )}
-
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <SummaryCard
                 label="Total current value"
-                value={
-                  loadingHoldings || loadingFx ? "—" : formatMoney(totalMarketValue, baseCurrency)
-                }
-                subLine={loadingHoldings || loadingFx ? undefined : currencyBreakdown}
+                value={loadingHoldings ? "—" : formatMoney(totalMarketValue, baseCurrency)}
                 size="hero"
               />
               <SummaryCard
                 label="Unrealized P&L"
-                value={loadingHoldings || loadingFx ? "—" : formatSigned(totalPnl, baseCurrency)}
+                value={loadingHoldings ? "—" : formatSigned(totalPnl, baseCurrency)}
                 suffix={
-                  !loadingHoldings && !loadingFx && totalPnlPct !== null
+                  !loadingHoldings && totalPnlPct !== null
                     ? formatPercent(totalPnlPct)
                     : undefined
                 }
-                colorClass={loadingHoldings || loadingFx ? undefined : pnlColor(totalPnl)}
+                colorClass={loadingHoldings ? undefined : pnlColor(totalPnl)}
               />
               <SummaryCard
                 label="Total return (incl. dividends)"
-                value={
-                  loadingHoldings || loadingFx ? "—" : formatSigned(totalReturn, baseCurrency)
-                }
+                value={loadingHoldings ? "—" : formatSigned(totalReturn, baseCurrency)}
                 suffix={
-                  !loadingHoldings && !loadingFx && totalReturnPct !== null
+                  !loadingHoldings && totalReturnPct !== null
                     ? formatPercent(totalReturnPct)
                     : undefined
                 }
-                colorClass={loadingHoldings || loadingFx ? undefined : pnlColor(totalReturn)}
+                colorClass={loadingHoldings ? undefined : pnlColor(totalReturn)}
               />
               <SummaryCard
-                label={hasMixedCurrencies ? "Annualized Return (XIRR) · approx." : "Annualized Return (XIRR)"}
+                label="Annualized Return (XIRR)"
                 value={
                   loadingHoldings || loadingXirr
                     ? "—"
@@ -770,16 +672,6 @@ function HoldingsPageContent() {
                         const totalRet = h.total_return === null ? null : Number(h.total_return);
                         const totalRetPct =
                           h.total_return_pct === null ? null : Number(h.total_return_pct);
-                        // THB-equivalent shown as a muted second line only
-                        // for a non-base-currency holding — converting a
-                        // THB holding to THB would just repeat the number
-                        // above it. null when no rate is cached (e.g. this
-                        // currency's fetch failed) — same fxRates cache
-                        // loadFxRates already populated, no extra API call.
-                        const convertedMarketValue =
-                          h.market_value === null || h.currency === baseCurrency
-                            ? null
-                            : convertToBase(Number(h.market_value), h.currency);
                         return (
                           <tr
                             key={h.asset_id}
@@ -800,25 +692,10 @@ function HoldingsPageContent() {
                                 ? "—"
                                 : formatUnitPrice(Number(h.last_price), h.currency)}
                             </td>
-                            <td className="px-3 py-3 text-right font-mono text-xs tabular-nums">
-                              {h.market_value === null ? (
-                                "—"
-                              ) : h.currency === baseCurrency ? (
-                                <div className="whitespace-nowrap">
-                                  {formatMoney(Number(h.market_value), h.currency)}
-                                </div>
-                              ) : (
-                                <>
-                                  <div className="whitespace-nowrap">
-                                    {formatMoney(Number(h.market_value), h.currency)}
-                                  </div>
-                                  {convertedMarketValue !== null && (
-                                    <div className="whitespace-nowrap text-[10px] font-normal text-gray-400 dark:text-gray-500">
-                                      ({formatMoney(convertedMarketValue, baseCurrency)})
-                                    </div>
-                                  )}
-                                </>
-                              )}
+                            <td className="whitespace-nowrap px-3 py-3 text-right font-mono text-xs tabular-nums">
+                              {h.market_value === null
+                                ? "—"
+                                : formatMoney(Number(h.market_value), h.currency)}
                             </td>
                             <td
                               className={`px-3 py-3 text-right font-mono text-xs tabular-nums ${pnl === null ? "" : pnlColor(pnl)}`}
@@ -879,6 +756,7 @@ function HoldingsPageContent() {
       {showAddTransaction && selectedId && (
         <TransactionModal
           portfolioId={selectedId}
+          baseCurrency={baseCurrency}
           onClose={() => setShowAddTransaction(false)}
           onSaved={handleTransactionSaved}
         />

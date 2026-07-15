@@ -2,19 +2,12 @@ export function SummaryCard({
   label,
   value,
   suffix,
-  subLine,
   colorClass,
   size = "default",
 }: {
   label: string;
   value: string;
   suffix?: string;
-  // Optional second line BELOW the value (not inline like suffix) —
-  // smaller and muted. First use: a non-base-currency composition
-  // breakdown under "Total current value" (e.g. "15.00 HKD + 30.00
-  // USD"), so the currency detail doesn't compete with the hero number.
-  // The parens are added by this component, not the caller.
-  subLine?: string;
   colorClass?: string;
   size?: "default" | "hero";
 }) {
@@ -36,11 +29,6 @@ export function SummaryCard({
           </span>
         )}
       </p>
-      {subLine && (
-        <p className="mt-1 font-mono text-xs tabular-nums text-gray-400 dark:text-gray-500">
-          ({subLine})
-        </p>
-      )}
     </div>
   );
 }

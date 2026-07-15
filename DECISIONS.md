@@ -643,7 +643,17 @@ multi-row batch triggering several sequential-looking Frankfurter calls.
 state, replacing what used to be a plain boolean in each.
 
 ## D127 — Multi-currency: convert only at portfolio-total display time, using TODAY's rate — not at transaction creation time, using the trade-date rate (supersedes D122-D126)
-**Why the change of mind**: D122-D126's approach assumed the FX rate
+**Superseded by D136, code removed by D141**: this whole "a portfolio
+can legitimately hold multiple currencies, convert for display" premise
+(D127-D135) was itself replaced one round later by a stricter
+single-currency-per-portfolio model — see D136 for why. The
+implementation (`getFxRatesForPairs()`, `nonBaseCurrencyTotals()`,
+`src/lib/fx.ts`, `/api/fx-rate`, the 2-line displays) was kept for one
+round as a defensive fallback (D137), then actually deleted (D141) once
+confirmed unnecessary. Kept below for the historical record of what was
+tried and why.
+
+**Why the change of mind (D122→D127)**: D122-D126's approach assumed the FX rate
 that matters for a foreign-currency purchase is the rate on the trade's
 own `trade_date`. Real usage doesn't work that way — someone typically
 exchanges a chunk of THB into USD once, holds that USD balance, and buys
@@ -697,6 +707,12 @@ explicitly only at the point they sum — keeps the "unknown" vs. "known
 to be zero" distinction visible in the count, per GOTCHAS.md #6.
 
 ## D131 — XIRR's mixed-currency inaccuracy is documented as a known limitation this round, not fixed
+**"· approx." suffix removed by D141**: under D136's single-currency-
+per-portfolio model, a portfolio holding more than one currency can no
+longer be created, so the condition that triggered this label can no
+longer occur — the label itself was removed as dead UI, not because the
+underlying reasoning below was wrong.
+
 Fixing it properly would mean converting every historical cash flow at
 its OWN trade-date rate — exactly the trade-date-FX-capture complexity
 D127 just decided against for the ledger itself (or refetching a
@@ -748,3 +764,96 @@ would be pure noise. When a foreign-currency holding's rate isn't cached
 value alone rather than a broken/placeholder second line — same
 "disclose what's known, don't fake what isn't" approach as the rest of
 this feature.
+
+## D136 — Multi-currency: switched to a single-currency-per-portfolio model (like Dime), enforced by validation — supersedes D127-D135's "one portfolio can hold multiple currencies, convert for display" approach
+**Why the change of mind**: D127-D135 (and, before that, D119-D126) both
+assumed a portfolio holding several currencies at once was a real,
+supported case worth building conversion/display machinery for. Two
+things changed that assessment: (1) confirmed no real mixed-currency
+data actually exists in the live database anymore — the original BABA/
+USD-in-a-THB-portfolio holding that started this whole thread is gone —
+so there's no existing data the conversion logic is actually serving;
+and (2) enforcing "one portfolio = one currency" at the point assets get
+attached to a portfolio (via validation) is a fundamentally smaller
+problem than "support any currency mix and reconcile it for display,
+totals, and returns" — no FX math needed anywhere in `holdings`/P&L/
+XIRR at all, not even at display time, once mismatches can't be created
+going forward. This also makes D131's "XIRR isn't currency-aware" gap
+moot for any NEW data, without XIRR itself needing to change. Matches a
+well-known, well-tested product pattern (Dime and similar apps: pick a
+currency per account/portfolio, add only matching assets) rather than a
+bespoke multi-currency reconciliation system.
+
+## D137 — The existing FX-conversion display code (2-line values, banners, `getFxRatesForPairs`, `nonBaseCurrencyTotals`, etc. from D127-D135) is left in place, not removed, this round
+**Reversed by D141**: kept as a defensive fallback for one round, then
+actually deleted once the user confirmed the validation was sufficient
+and the dormant code was just confusing to leave around. See D141.
+
+Not asked to remove it, and it's harmless to leave running — with
+validation now preventing new mismatches, it should simply never have
+anything to display in practice (no banner, no second line, no
+breakdown), degrading gracefully to look identical to a pure-single-
+currency portfolio. Keeping it also means any pre-existing mismatched
+data that turns out to still be lurking (despite the current stated
+clean state) still displays correctly rather than reverting to the
+original bug (a raw non-THB number silently stamped with a ฿ symbol).
+Removing this code is a reasonable follow-up cleanup once the
+single-currency invariant has been enforced for a while and confirmed
+solid — flagged to the user as an option, not done unprompted here.
+
+## D138 — "+ Add new asset" now defaults its Currency field to the portfolio's `baseCurrency`, not a hardcoded `"THB"`
+Found while implementing this round's validation: `openNewAssetForm()`
+always reset `newCurrency` to `"THB"` regardless of which portfolio the
+form was opened from — harmless while every portfolio was THB, but would
+have made the new mismatch warning fire by default on every single new-
+asset creation in a future non-THB portfolio (the common, intended case
+would start out looking like an error). Fixed as part of this change
+since it's directly load-bearing for the validation to feel sensible,
+not a separate unrelated cleanup.
+
+## D139 — A currency-mismatched asset stays visible (not filtered out) in the asset picker dropdown — dimmed, with its currency noted, and clicking it blocks selection with a message, rather than hiding it entirely
+Filtering it out would make the asset look like it doesn't exist in the
+system at all, which is more confusing than seeing it and understanding
+exactly why it can't be added here — same reasoning as D63/D130's
+general "disclose, don't hide" pattern elsewhere in this app.
+
+## D140 — The "+ Add new asset" currency mismatch is a hard block (disabled "Create & use this asset" button), not just an advisory warning
+The ask's wording for this form ("แจ้งเตือน"/"warn") was softer than
+instruction #1's explicit "block" for picking an *existing* mismatched
+asset — but the stated goal for this whole round ("validation to prevent
+this problem from happening again") only holds if both paths that can
+attach a wrong-currency asset to a portfolio are actually stopped, not
+just flagged. A dismissible warning that still let creation proceed
+would recreate the exact problem via a second door. Treated both paths
+(pick existing / create new) the same way for consistency, since they
+carry the identical underlying risk.
+
+## D141 — Fully deleted the D127-D135 display-time FX conversion code (superseding D137's "leave it as a fallback" call), one round after D136's validation shipped
+D137 chose to leave the conversion/display code in place as a defensive
+fallback, reasoning that removal was a separate cleanup decision for
+later. The user made that call explicitly this round: with validation
+now enforcing single-currency-per-portfolio, the code has no live data
+path that can ever reach it again, and its continued presence was
+judged more confusing (a reader has to work out *why* dead conversion
+logic still exists) than valuable as a safety net. Removed entirely
+rather than commented-out or feature-flagged — this is a Git history
+problem, not a runtime one; `git log`/`git show` on the relevant commits
+recovers the exact implementation if a future, genuinely different
+mixed-currency feature ever needs the pattern again. Deleted:
+`src/lib/fx.ts` (`getFxRate`, `fxPairKey`, `getFxRatesForPairs`,
+`nonBaseCurrencyTotals`) in full, `src/app/api/fx-rate/route.ts` in
+full, `formatCurrencyBreakdown()` from `src/lib/format.ts`, the
+`subLine` prop from `SummaryCard`, and all call sites/state in
+`holdings/page.tsx` and `page.tsx` (Overview) — confirmed via
+repo-wide grep with zero remaining references before/after. `formatAmount()`
+in `src/lib/format.ts` reverted from exported back to file-private, since
+its only outside caller (`formatCurrencyBreakdown`) is gone.
+
+**Not removed**: `transactions.fx_rate_to_base` (migration 0014) stays
+in the schema, unused — per the user's explicit instruction and D128's
+original reasoning (dropping and potentially re-adding later is more
+churn than one unused nullable column). `TransactionModal`'s
+`baseCurrency` prop and the currency-mismatch validation it drives
+(D136-D140) are UNRELATED to this removal and were kept — that's a
+different mechanism (prevention, not conversion) built on top of the
+same `base_currency` column, not part of what got deleted here.

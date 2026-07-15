@@ -14,18 +14,21 @@ _(original requirement #3)_
 
 ## Phase 3 — accurate returns (mostly done)
 Dividends / total return, CSV/paste price import, multi-dimension
-allocation (sector / country) — all done. Multi-currency + FX: portfolio
-totals on Holdings and Overview now convert non-base-currency holdings
-to the portfolio's `base_currency` using today's FX rate at display
-time (Frankfurter, via `src/lib/fx.ts`) — see ARCHITECTURE.md's
-"Multi-currency approach" and DECISIONS.md D127-D131. An earlier
-per-transaction FX-capture approach (D119-D126) was tried and reverted —
-doesn't match real usage (currency exchanged well before/after the
-actual trade). Per-holding display (Avg Cost, Last Price, etc.) already
-correctly showed each asset's own currency, unrelated to this change.
-Known gaps: XIRR still isn't currency-aware (D131), Rebalancing's own
-total wasn't touched this round. Allocation by currency still not
-started.
+allocation (sector / country) — all done. Multi-currency: settled on
+**one portfolio = one currency**, enforced by validation in
+`TransactionModal` (picking an existing asset or creating a new one both
+block a currency mismatch against the portfolio's `base_currency`) — see
+ARCHITECTURE.md's "Multi-currency approach (current)" and DECISIONS.md
+D136-D140. Two earlier directions were tried and fully removed: capturing
+an FX rate per transaction (D119-D126, doesn't match real usage — FX is
+exchanged well before/after the actual trade) and converting mixed
+currencies for display (D127-D135, removed by D141 because no real
+mixed-currency data exists to support and prevention is simpler than
+reconciliation — `src/lib/fx.ts`, `/api/fx-rate`, and all related UI are
+gone from the codebase, confirmed by repo-wide grep). No schema change —
+`assets` isn't portfolio-scoped in the DB, so this is UI/app-layer
+validation only; `transactions.fx_rate_to_base` (migration 0014) stays
+in the schema, unused. Allocation by currency still not started.
 
 ## Phase 4 — history & benchmark (done)
 `portfolio_snapshots` (done), the growth/trend chart on Holdings (done,

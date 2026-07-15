@@ -1,5 +1,50 @@
 # Changelog
 
+## 2026-07-16 — Multi-currency: deleted the display-time FX conversion code entirely
+- Removed everything built for D127-D135's "convert mixed currencies for
+  display" approach, now that D136's validation makes it structurally
+  impossible for a portfolio to hold more than one currency:
+  - Deleted `src/lib/fx.ts` in full (`getFxRate`, `fxPairKey`,
+    `getFxRatesForPairs`, `nonBaseCurrencyTotals`) and
+    `src/app/api/fx-rate/route.ts` in full.
+  - Removed `formatCurrencyBreakdown()` from `src/lib/format.ts`;
+    reverted `formatAmount()` back to file-private (its only outside
+    caller is gone).
+  - Removed `SummaryCard`'s `subLine` prop.
+  - Holdings' per-row Current Value cell and "Total current value" card,
+    and Overview's per-portfolio value, all reverted to their single-line
+    pre-multi-currency display — no more THB-equivalent second line, no
+    more currency breakdown line, no more FX-unconverted banners.
+  - Removed the "· approx." suffix on the XIRR card label — the
+    mixed-currency case it flagged can no longer occur.
+- Confirmed via repo-wide grep: zero remaining references to any of the
+  above before finishing.
+- `transactions.fx_rate_to_base` (migration 0014) is untouched — stays
+  in the schema, unused, per prior decision (D128, reaffirmed D141).
+  `TransactionModal`'s currency-mismatch validation (D136-D140) is a
+  separate mechanism and was NOT touched by this cleanup.
+
+## 2026-07-15 — Multi-currency: switched to one-currency-per-portfolio, enforced by validation (supersedes display-time conversion)
+- Major direction change: a portfolio is now meant to hold only assets
+  matching its `base_currency` (like Dime) — no FX conversion needed
+  anywhere, rather than supporting a currency mix and reconciling it.
+  See DECISIONS.md D136 for the full reasoning.
+- `TransactionModal` now blocks a currency mismatch in two places:
+  - Picking an existing asset: a mismatched asset stays visible in the
+    search dropdown (dimmed, currency noted) but clicking it shows an
+    error instead of selecting it.
+  - "+ Add new asset" (manual entry or Finnhub/CoinGecko search): shows
+    the same warning and disables "Create & use this asset" whenever the
+    asset's currency doesn't match the portfolio.
+- Fixed `openNewAssetForm()` defaulting Currency to a hardcoded `"THB"`
+  regardless of portfolio — now defaults to the portfolio's own
+  `base_currency`, so the common case starts out valid.
+- No schema change — UI/app-layer validation only, since `assets` isn't
+  portfolio-scoped in the database.
+- The previous round's display-time FX conversion (2-line values,
+  banners, `getFxRatesForPairs`) is left in place, unused in practice
+  once mismatches can't be created — not removed this round (D137).
+
 ## 2026-07-15 — Multi-currency: two-line currency display (converted value + native/breakdown detail)
 - Holdings' "Total current value" card now shows a muted second line
   under the converted total listing each non-base currency actually

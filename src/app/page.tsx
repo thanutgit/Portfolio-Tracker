@@ -8,10 +8,9 @@ import { NewPortfolioModal } from "@/components/NewPortfolioModal";
 import { EditPortfolioModal } from "@/components/EditPortfolioModal";
 import { Toast } from "@/components/Toast";
 import type { HoldingWithReturns, Portfolio } from "@/lib/types";
-import { formatCurrencyBreakdown, formatMoney, formatPercent, pnlBadgeClass } from "@/lib/format";
+import { formatMoney, formatPercent, pnlBadgeClass } from "@/lib/format";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { countDriftedAssets, type DriftHolding, type DriftTarget } from "@/lib/drift";
-import { getFxRatesForPairs, fxPairKey, nonBaseCurrencyTotals } from "@/lib/fx";
 import { DriftBadge } from "@/components/DriftBadge";
 import { PageHeader } from "@/components/PageHeader";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -82,16 +81,6 @@ interface PortfolioSummary {
   totalReturn: number;
   totalReturnPct: number | null;
   driftedCount: number | null;
-  // Count of this portfolio's holdings whose currency differs from the
-  // portfolio's base_currency AND whose today's FX rate couldn't be
-  // fetched — those holdings contribute 0 to totalValue/totalReturn
-  // above rather than being converted, same "show what we can" approach
-  // as Holdings' unpriced-holdings handling. See DECISIONS.md D127-D130.
-  fxUnconvertedCount: number;
-  // Raw (unconverted), per-currency totals for every non-base-currency
-  // holding — disclosed alongside totalValue, independent of whether
-  // fxUnconvertedCount is 0 (see D132).
-  currencyBreakdown: { currency: string; amount: number }[];
 }
 
 export default function OverviewPage() {
@@ -150,58 +139,12 @@ export default function OverviewPage() {
       targetsByPortfolio.set(t.portfolio_id, list);
     }
 
-    // Each portfolio's totals need every holding converted into THAT
-    // portfolio's own base_currency, using today's rate (not each
-    // transaction's trade_date rate — see DECISIONS.md D127). Collected
-    // across all portfolios up front so getFxRatesForPairs can dedupe:
-    // two portfolios both holding USD against a THB base only cost one
-    // Frankfurter lookup, not two.
-    const fxPairs: { from: string; to: string }[] = [];
-    for (const portfolio of portfoliosRes.data ?? []) {
-      const holdings = holdingsByPortfolio.get(portfolio.id) ?? [];
-      for (const h of holdings) {
-        if (h.currency !== portfolio.base_currency) {
-          fxPairs.push({ from: h.currency, to: portfolio.base_currency });
-        }
-      }
-    }
-    const today = new Date().toISOString().slice(0, 10);
-    const { rates: fxRates, failed: fxFailed } =
-      fxPairs.length > 0
-        ? await getFxRatesForPairs(fxPairs, today)
-        : { rates: new Map<string, number>(), failed: [] as { from: string; to: string }[] };
-    const fxFailedKeys = new Set(fxFailed.map((p) => fxPairKey(p.from, p.to)));
-
-    // null (not 0) when the currency doesn't match base AND has no rate —
-    // callers below add `?? 0` explicitly at the point they sum, so the
-    // "couldn't convert" case stays visible as a count rather than
-    // silently vanishing into the total (see GOTCHAS.md #6).
-    function convertToBase(value: number, currency: string, baseCurrency: string): number | null {
-      if (currency === baseCurrency) return value;
-      const rate = fxRates.get(fxPairKey(currency, baseCurrency));
-      return rate === undefined ? null : value * rate;
-    }
-
     const result: PortfolioSummary[] = (portfoliosRes.data ?? []).map((portfolio) => {
       const holdings = holdingsByPortfolio.get(portfolio.id) ?? [];
-      const totalValue = holdings.reduce((sum, h) => {
-        const converted = convertToBase(Number(h.market_value ?? 0), h.currency, portfolio.base_currency);
-        return sum + (converted ?? 0);
-      }, 0);
-      const totalCostBasis = holdings.reduce((sum, h) => {
-        const converted = convertToBase(Number(h.cost_basis ?? 0), h.currency, portfolio.base_currency);
-        return sum + (converted ?? 0);
-      }, 0);
-      const totalReturn = holdings.reduce((sum, h) => {
-        const raw = h.total_return === null ? 0 : Number(h.total_return);
-        const converted = convertToBase(raw, h.currency, portfolio.base_currency);
-        return sum + (converted ?? 0);
-      }, 0);
+      const totalValue = holdings.reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
+      const totalCostBasis = holdings.reduce((sum, h) => sum + Number(h.cost_basis ?? 0), 0);
+      const totalReturn = holdings.reduce((sum, h) => sum + Number(h.total_return ?? 0), 0);
       const totalReturnPct = totalCostBasis !== 0 ? (totalReturn / totalCostBasis) * 100 : null;
-      const fxUnconvertedCount = holdings.filter(
-        (h) => h.currency !== portfolio.base_currency && fxFailedKeys.has(fxPairKey(h.currency, portfolio.base_currency))
-      ).length;
-      const currencyBreakdown = nonBaseCurrencyTotals(holdings, portfolio.base_currency);
       const driftHoldings: DriftHolding[] = holdings.map((h) => ({
         asset_id: h.asset_id,
         market_value: Number(h.market_value ?? 0),
@@ -217,8 +160,6 @@ export default function OverviewPage() {
         totalReturn,
         totalReturnPct,
         driftedCount,
-        fxUnconvertedCount,
-        currencyBreakdown,
       };
     });
 
@@ -284,8 +225,6 @@ export default function OverviewPage() {
                 totalReturn,
                 totalReturnPct,
                 driftedCount,
-                fxUnconvertedCount,
-                currencyBreakdown,
               }) => {
                 const showPercentBadge = holdingsCount > 0 && totalReturnPct !== null;
                 return (
@@ -322,8 +261,6 @@ export default function OverviewPage() {
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       {holdingsCount} holding{holdingsCount === 1 ? "" : "s"}
-                      {fxUnconvertedCount > 0 &&
-                        ` · FX rate unavailable for ${fxUnconvertedCount}`}
                     </p>
                   </div>
                 </div>
@@ -333,11 +270,6 @@ export default function OverviewPage() {
                     <p className="whitespace-nowrap font-mono text-xl font-medium tabular-nums text-gray-900 dark:text-gray-100">
                       {formatMoney(totalValue, portfolio.base_currency)}
                     </p>
-                    {currencyBreakdown.length > 0 && (
-                      <p className="whitespace-nowrap font-mono text-[10px] tabular-nums text-gray-400 dark:text-gray-500">
-                        ({formatCurrencyBreakdown(currencyBreakdown)})
-                      </p>
-                    )}
                     {(showPercentBadge || !!driftedCount) && (
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         {showPercentBadge && (

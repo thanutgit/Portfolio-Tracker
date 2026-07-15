@@ -12,6 +12,7 @@ import type { Asset } from "@/lib/types";
 
 interface Props {
   portfolioId: string;
+  baseCurrency: string;
   onClose: () => void;
   onSaved: (count: number) => void;
 }
@@ -71,21 +72,31 @@ function newTxnRow(): TxnRow {
 // Per-row asset combobox — each row picks independently (the same asset can
 // legitimately appear in more than one row, e.g. a buy and a later sell of
 // the same holding in one batch, so rows never exclude each other's pick).
+//
+// Single-currency-per-portfolio (see DECISIONS.md D136-D140): an asset
+// whose currency doesn't match the portfolio's baseCurrency is still
+// shown (not filtered out — the user searched for it, hiding it would
+// just look like it doesn't exist) but dimmed with its currency noted,
+// and clicking it blocks selection with a clear explanation instead of
+// picking it.
 function TxnAssetCombobox({
   options,
   selected,
+  baseCurrency,
   onSelect,
   onClear,
   onAddNew,
 }: {
   options: Asset[];
   selected: Asset | null;
+  baseCurrency: string;
   onSelect: (asset: Asset) => void;
   onClear: () => void;
   onAddNew: (query: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [mismatchMessage, setMismatchMessage] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -119,7 +130,10 @@ function TxnAssetCombobox({
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          setMismatchMessage(null);
+        }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="Search by symbol or name…"
         className={TEXT_INPUT_CLASS}
@@ -127,22 +141,35 @@ function TxnAssetCombobox({
       {open && (
         <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
           <ul className="max-h-40 overflow-y-auto">
-            {filtered.map((a) => (
-              <li key={a.id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelect(a);
-                    setQuery("");
-                    setOpen(false);
-                  }}
-                  className="block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
-                >
-                  <span className="font-medium">{a.symbol}</span>{" "}
-                  <span className="text-gray-500 dark:text-gray-400">{a.name}</span>
-                </button>
-              </li>
-            ))}
+            {filtered.map((a) => {
+              const mismatch = a.currency !== baseCurrency;
+              return (
+                <li key={a.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (mismatch) {
+                        setMismatchMessage(
+                          `${a.symbol} is priced in ${a.currency} — this portfolio is ${baseCurrency}. Create or switch to a ${a.currency} portfolio to add this asset.`
+                        );
+                        setOpen(false);
+                        return;
+                      }
+                      onSelect(a);
+                      setQuery("");
+                      setOpen(false);
+                    }}
+                    className={`block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800 ${
+                      mismatch ? "text-gray-400 dark:text-gray-500" : ""
+                    }`}
+                  >
+                    <span className="font-medium">{a.symbol}</span>{" "}
+                    <span className={mismatch ? "" : "text-gray-500 dark:text-gray-400"}>{a.name}</span>
+                    {mismatch && ` · ${a.currency}`}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
           <button
             type="button"
@@ -153,11 +180,14 @@ function TxnAssetCombobox({
           </button>
         </div>
       )}
+      {mismatchMessage && (
+        <p className="mt-1 text-xs text-red-600 dark:text-red-400">{mismatchMessage}</p>
+      )}
     </div>
   );
 }
 
-export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
+export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }: Props) {
   const [rows, setRows] = useState<TxnRow[]>([newTxnRow()]);
   const [rowErrors, setRowErrors] = useState<Map<string, string>>(new Map());
 
@@ -236,7 +266,12 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     setNewSymbol(prefill.trim());
     setNewName("");
     setNewAssetType("stock");
-    setNewCurrency("THB");
+    // Defaults to the CURRENT portfolio's currency, not a hardcoded "THB"
+    // — matters once a non-THB portfolio exists (see DECISIONS.md D138):
+    // the common case (new asset matches the portfolio you're adding it
+    // to) should start out valid, not immediately show the mismatch
+    // warning below by default.
+    setNewCurrency(baseCurrency);
     setNewSector("");
     setNewCountry("");
     setNewMarket(null);
@@ -588,6 +623,13 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
     onSaved(valid.length);
   }
 
+  // Same single-currency-per-portfolio rule as TxnAssetCombobox, applied
+  // to the "+ Add new asset" sub-form — covers both manual entry (user
+  // picks a different Currency by hand) and Search asset mode (Finnhub
+  // auto-fills the real listing currency, which may not match). See
+  // DECISIONS.md D136-D140.
+  const newAssetCurrencyMismatch = newCurrency !== baseCurrency;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm dark:bg-black/60"
@@ -668,6 +710,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
                   <TxnAssetCombobox
                     options={assets}
                     selected={selectedAsset}
+                    baseCurrency={baseCurrency}
                     onSelect={(a) => updateRow(row.id, { assetId: a.id })}
                     onClear={() => updateRow(row.id, { assetId: null })}
                     onAddNew={(query) => openNewAssetForm(row.id, query)}
@@ -819,6 +862,13 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
                       </div>
                     </div>
 
+                    {newAssetCurrencyMismatch && (
+                      <p className="text-xs text-red-600 dark:text-red-400">
+                        {(newSymbol.trim() || "This asset")} is priced in {newCurrency} — this
+                        portfolio is {baseCurrency}. Create or switch to a {newCurrency} portfolio
+                        to add it.
+                      </p>
+                    )}
                     {profileMissingSectorCountry && (
                       <p className="text-xs text-amber-600 dark:text-amber-400">
                         Sector/country not available for this symbol (likely an ETF/fund) —
@@ -874,7 +924,7 @@ export function TransactionModal({ portfolioId, onClose, onSaved }: Props) {
                       <button
                         type="button"
                         onClick={handleCreateAsset}
-                        disabled={creatingAsset}
+                        disabled={creatingAsset || newAssetCurrencyMismatch}
                         className="cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-blue-700 hover:shadow-md active:translate-y-0 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {creatingAsset ? "Creating…" : "Create & use this asset"}
