@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-16 — Delete a portfolio, GitHub-style typed-name confirmation
+- Added a trash icon next to the existing rename icon on each Overview
+  portfolio card, opening a new `DeletePortfolioModal`.
+- The modal fetches and shows real counts of everything that cascades
+  away (transactions, dividends, target allocations, snapshot days) and
+  requires typing the portfolio's exact name (case-sensitive) before
+  the red "Delete this portfolio" button becomes clickable.
+- No migration needed — `transactions`/`targets`/`portfolio_snapshots`
+  already have `on delete cascade` to `portfolios`, and RLS already
+  covers `DELETE`. A single `delete from portfolios` does the rest. See
+  DECISIONS.md D143/D144.
+- On success: toast ("{name} deleted."), modal closes, Overview's list
+  reloads.
+- Also found and restored (with the user's confirmation) an unrelated,
+  uncommitted local corruption in `migrations/0010_enable_rls.sql`
+  (its real RLS policy SQL had been replaced with garbage text in the
+  working tree — never affected the live database, which already had
+  the correct policies applied).
+- `npx tsc --noEmit` and `npm run lint` both clean.
+
 ## 2026-07-16 — New portfolios pick their currency at creation
 - `NewPortfolioModal` gained a "Currency" dropdown next to the name
   field, saved to `portfolios.base_currency` on insert — previously

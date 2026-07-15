@@ -893,3 +893,56 @@ prop rendered as a small neutral pill, and Overview's portfolio cards
 append `· {base_currency}` after the holdings count. Neutral gray, not
 one of DESIGN.md's semantic palettes (P&L green/red, drift amber) —
 currency is identifying information, not a status or a value judgment.
+
+## D143 — Portfolio deletion is one `delete from portfolios`, not per-table app-side deletes — the schema's existing cascades and RLS already cover it
+
+Checked before writing any code, as asked: `transactions.portfolio_id`,
+`targets.portfolio_id`, and `portfolio_snapshots.portfolio_id` all
+already declare `references portfolios(id) on delete cascade`
+(`0001_init.sql`, `0002_add_targets.sql`, `0005_add_portfolio_snapshots.sql`
+respectively — none of this is new). Dividends aren't a separate table
+(`dividend_income` is a view over `transactions` where `type =
+'dividend'`, see ARCHITECTURE.md), so they're already covered by the
+`transactions` cascade with no extra handling. RLS's `own portfolios`/
+`own transactions`/`own targets`/`own portfolio_snapshots` policies
+(`0010_enable_rls.sql`) all use `for all`, which covers `DELETE` the
+same as `SELECT`/`INSERT`/`UPDATE` — so a logged-in owner deleting
+their own portfolio is already permitted at the database layer.
+
+Given that, `DeletePortfolioModal` does a single
+`supabase.from("portfolios").delete().eq("id", portfolio.id)` and lets
+Postgres cascade the rest — **no new migration**. The alternative (the
+app manually deleting from `transactions`/`targets`/
+`portfolio_snapshots` before the `portfolios` row) was rejected: it's
+strictly worse here — four round-trips instead of one, a real
+partial-failure window between them (GOTCHAS.md #1's exact class of
+bug: the app crashing or erroring between step 2 and step 3 would leave
+orphaned rows with no automatic cleanup), and duplicated logic the
+database already enforces correctly. Manual app-side deletes are only
+the right call when a table *lacks* a working cascade — that's not the
+case here.
+
+## D144 — Delete confirmation shows real counts for all four cascaded categories (transactions, dividends, targets, and snapshot days), not just transactions/dividends as literally asked
+
+The request's example warning text named "N transactions, M dividends,
+and target allocations" but item 4 makes clear the full cascade blast
+radius also includes `portfolio_snapshots` (the trend-chart history).
+Showing a live count for transactions and dividends but leaving targets
+and snapshots as unquantified nouns would be inconsistent — and this
+app already treats "state a real number, not a vague phrase" as the
+standard for a destructive-action warning (mirrors the existing
+asset-delete flow in `assets/page.tsx`, which shows the exact linked
+transaction count rather than "some transactions"). All four counts are
+fetched with `{ count: "exact", head: true }` (no row data pulled, same
+pattern used there and in `HistoryModal`), in parallel, before the
+Delete button can ever become enabled.
+
+Aside: while reading `migrations/0010_enable_rls.sql` to verify the
+cascade/RLS claim above, found its *working-tree* copy had been
+locally corrupted (its real policy SQL replaced with garbage
+placeholder text) — uncommitted, so the live database was never
+affected (it already has the correct policies applied, confirmed via
+`git show HEAD` matching what's described in ARCHITECTURE.md). Restored
+via `git checkout` after confirming with the user, since editing an
+already-applied migration file violates CLAUDE.md's non-negotiables
+regardless of cause.

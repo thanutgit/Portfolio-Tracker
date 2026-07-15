@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { EmptyState } from "@/components/EmptyState";
 import { NewPortfolioModal } from "@/components/NewPortfolioModal";
 import { EditPortfolioModal } from "@/components/EditPortfolioModal";
+import { DeletePortfolioModal } from "@/components/DeletePortfolioModal";
 import { Toast } from "@/components/Toast";
 import type { HoldingWithReturns, Portfolio } from "@/lib/types";
 import { formatMoney, formatPercent, pnlBadgeClass } from "@/lib/format";
@@ -74,6 +75,18 @@ function PencilIcon() {
   );
 }
 
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M4 6h12M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-7 0 .6 9.4a1.5 1.5 0 0 0 1.5 1.4h4.8a1.5 1.5 0 0 0 1.5-1.4L15 6"
+      />
+    </svg>
+  );
+}
+
 interface PortfolioSummary {
   portfolio: Portfolio;
   holdingsCount: number;
@@ -89,6 +102,7 @@ export default function OverviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [showNewPortfolio, setShowNewPortfolio] = useState(false);
   const [editingPortfolio, setEditingPortfolio] = useState<Portfolio | null>(null);
+  const [deletingPortfolio, setDeletingPortfolio] = useState<Portfolio | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   async function loadSummaries() {
@@ -184,6 +198,12 @@ export default function OverviewPage() {
     await loadSummaries();
   }
 
+  async function handlePortfolioDeleted(portfolio: Portfolio) {
+    setDeletingPortfolio(null);
+    setToastMessage(`${portfolio.name} deleted.`);
+    await loadSummaries();
+  }
+
   return (
     <RequireAuth>
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
@@ -258,6 +278,20 @@ export default function OverviewPage() {
                       >
                         <PencilIcon />
                       </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          // Same reasoning as the rename button above — this
+                          // sits inside the whole-card <Link>.
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeletingPortfolio(portfolio);
+                        }}
+                        aria-label="Delete portfolio"
+                        className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded-full text-gray-400 transition-all duration-150 hover:-translate-y-px hover:bg-red-50 hover:text-red-600 hover:shadow-sm active:translate-y-0 active:shadow-none dark:text-gray-500 dark:hover:bg-red-950 dark:hover:text-red-400"
+                      >
+                        <TrashIcon />
+                      </button>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       {holdingsCount} holding{holdingsCount === 1 ? "" : "s"} ·{" "}
@@ -314,6 +348,14 @@ export default function OverviewPage() {
           portfolio={editingPortfolio}
           onClose={() => setEditingPortfolio(null)}
           onSaved={handlePortfolioRenamed}
+        />
+      )}
+
+      {deletingPortfolio && (
+        <DeletePortfolioModal
+          portfolio={deletingPortfolio}
+          onClose={() => setDeletingPortfolio(null)}
+          onDeleted={handlePortfolioDeleted}
         />
       )}
 

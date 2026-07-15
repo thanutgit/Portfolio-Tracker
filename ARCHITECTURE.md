@@ -562,6 +562,35 @@ schema, unused — kept rather than dropped (D128, reaffirmed by D141).
 Rebalancing's own portfolio total (`rebalancing/page.tsx`) was never
 updated for either the old or current approach — untouched throughout.
 
+## Portfolio deletion
+A trash icon next to the existing rename (pencil) icon on each Overview
+portfolio card opens `DeletePortfolioModal` (a bespoke modal, not the
+generic `ConfirmDialog`) — GitHub-style: it fetches and displays real
+counts of everything that will cascade away (transactions, dividends,
+target allocations, and snapshot/trend-chart days — all via
+`{ count: "exact", head: true }` queries, no rows pulled), and the red
+"Delete this portfolio" button stays disabled until the typed
+confirmation input exactly (case-sensitively) matches the portfolio's
+name.
+
+No new migration was needed: `transactions`/`targets`/
+`portfolio_snapshots` already declare `portfolio_id ... on delete
+cascade` (since `0001_init.sql`/`0002_add_targets.sql`/
+`0005_add_portfolio_snapshots.sql`), and RLS's `for all` policies
+(`0010_enable_rls.sql`) already cover `DELETE`. Dividends aren't a
+separate table (`dividend_income` is a view over `transactions`), so
+they're covered by the same cascade. The app issues one
+`delete from portfolios where id = ...` and lets Postgres cascade the
+rest, rather than deleting from each child table itself — see
+DECISIONS.md D143 for why (mainly: avoids a real partial-failure
+window between manual multi-step deletes, the same class of bug as
+GOTCHAS.md #1). See DECISIONS.md D144 for why all four categories get
+a real count, not just transactions/dividends.
+
+On success, `onDeleted` closes the modal, shows a `Toast` ("{name}
+deleted.") and reloads Overview's summaries — no actual navigation
+needed since the delete action already lives on Overview.
+
 ## Manual price entry (Prices page)
 `src/app/prices/page.tsx` has two entry modes, switched via a tab (no route
 change — same page, local `mode` state):
