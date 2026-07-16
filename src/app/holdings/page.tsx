@@ -18,6 +18,7 @@ import { TrendChart, type SnapshotPoint } from "@/components/TrendChart";
 import { CHART_COLORS, UNCATEGORIZED_COLOR } from "@/lib/chartColors";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { xirr, type CashFlow } from "@/lib/xirr";
+import { computeRealizedGain, type RealizedGainTransaction } from "@/lib/realizedGain";
 import { countDriftedAssets, type DriftHolding, type DriftTarget } from "@/lib/drift";
 import { WarningIcon } from "@/components/DriftBadge";
 import type { HoldingWithReturns } from "@/lib/types";
@@ -163,6 +164,8 @@ function HoldingsPageContent() {
   const [snapshots, setSnapshots] = useState<SnapshotPoint[]>([]);
   const [xirrRate, setXirrRate] = useState<number | null>(null);
   const [loadingXirr, setLoadingXirr] = useState(false);
+  const [realizedGain, setRealizedGain] = useState<number | null>(null);
+  const [loadingRealizedGain, setLoadingRealizedGain] = useState(false);
   const [driftedCount, setDriftedCount] = useState<number | null>(null);
   const [loadingHoldings, setLoadingHoldings] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -198,6 +201,7 @@ function HoldingsPageContent() {
         loadSnapshots(selectedId);
         const totalMV = (data ?? []).reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
         loadXirr(selectedId, totalMV);
+        loadRealizedGain(selectedId);
         loadDrift(selectedId, data ?? []);
       }
     }
@@ -241,6 +245,50 @@ function HoldingsPageContent() {
 
     setXirrRate(xirr(flows));
     setLoadingXirr(false);
+  }
+
+  // FIFO realized gain (src/lib/realizedGain.ts), summed across every asset
+  // that's ever had a buy/sell in this portfolio — not just currently-held
+  // ones, since a fully-sold asset's past sells still count. Queries
+  // `transactions` directly by portfolio_id (same as loadXirr above), not
+  // scoped through `holdings`, for exactly that reason. Grouped by
+  // asset_id client-side since FIFO must be computed per asset (each
+  // asset's buy lots are its own independent queue) before summing into
+  // one portfolio-level figure. Only recomputed on non-silent loads, same
+  // lifecycle as XIRR/auto-snapshot — realized gain only changes when the
+  // transaction ledger changes, not on a 60s crypto-price tick.
+  async function loadRealizedGain(portfolioId: string) {
+    setLoadingRealizedGain(true);
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("asset_id, type, trade_date, quantity, price, fee")
+      .eq("portfolio_id", portfolioId)
+      .in("type", ["buy", "sell"]);
+    if (error || !data) {
+      setRealizedGain(null);
+      setLoadingRealizedGain(false);
+      return;
+    }
+
+    const byAsset = new Map<string, RealizedGainTransaction[]>();
+    for (const t of data) {
+      const list = byAsset.get(t.asset_id) ?? [];
+      list.push({
+        type: t.type,
+        trade_date: t.trade_date,
+        quantity: Number(t.quantity),
+        price: Number(t.price),
+        fee: Number(t.fee),
+      });
+      byAsset.set(t.asset_id, list);
+    }
+
+    let total = 0;
+    for (const assetTransactions of byAsset.values()) {
+      total += computeRealizedGain(assetTransactions);
+    }
+    setRealizedGain(total);
+    setLoadingRealizedGain(false);
   }
 
   // Drift-threshold alert: same formula as the Rebalancing page
@@ -560,7 +608,7 @@ function HoldingsPageContent() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <SummaryCard
                 label="Total current value"
                 value={loadingHoldings ? "—" : formatMoney(totalMarketValue, baseCurrency)}
@@ -600,6 +648,20 @@ function HoldingsPageContent() {
                     ? undefined
                     : pnlColor(xirrRate)
                 }
+              />
+              <SummaryCard
+                label="Realized Gain"
+                value={
+                  loadingHoldings || loadingRealizedGain || realizedGain === null
+                    ? "—"
+                    : formatSigned(realizedGain, baseCurrency)
+                }
+                colorClass={
+                  loadingHoldings || loadingRealizedGain || realizedGain === null
+                    ? undefined
+                    : pnlColor(realizedGain)
+                }
+                caption="FIFO-based — may differ from the average-cost figures shown elsewhere"
               />
             </div>
 

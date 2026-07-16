@@ -30,6 +30,11 @@ gone from the codebase, confirmed by repo-wide grep). No schema change —
 validation only; `transactions.fx_rate_to_base` (migration 0014) stays
 in the schema, unused. Allocation by currency still not started.
 
+Realized gain via FIFO — not started. Real brokers (Dime, Streaming,
+Webull, Phillip) match sell lots FIFO for realized gain even though
+displayed avg cost is weighted-average (same as this app). This app
+only shows unrealized P&L; no realized-gain tracking exists yet.
+
 ## Phase 4 — history & benchmark (done)
 `portfolio_snapshots` (done), the growth/trend chart on Holdings (done,
 using `recharts`), XIRR / money-weighted annualized return (done,
@@ -41,7 +46,8 @@ considered and dropped, see DECISIONS.md.
 ## Phase 5 — Thai tax & live prices (in progress)
 RMF/SSF/ThaiESG holding-period tracking (done — `src/lib/taxHolding.ts`,
 `user_settings` table for birth date, badges in the History modal) —
-still to come: live price APIs for Thai funds/stocks (dividend tax
+still to come: live price API for Thai funds only (foreign stocks now
+auto-fetch via Finnhub, crypto via CoinGecko — done) (dividend tax
 withholding was already handled earlier, in Phase 3).
 
 ## Phase 6 — LLM / wiki
@@ -69,6 +75,9 @@ now historical).
   open) — all applied and verified: logging in with the real account
   shows every portfolio's full data (holdings, transactions, targets,
   snapshots) intact.
+- **Password reset / "forgot password" flow (done)** — `/forgot-password`
+  and `/reset-password`, same password-validation checklist as
+  `/signup`. See ARCHITECTURE.md's Auth section for the full flow.
 - **Genuinely multi-user already works** — RLS scopes every
   user-owned table to `auth.uid()`, so a second real signup would get
   their own isolated portfolios/transactions/etc. today, not just a
@@ -80,7 +89,6 @@ now historical).
     there's no resend-confirmation link, no dedicated
     "confirmed!"/error landing page for the confirmation link itself,
     and no handling for an expired confirmation link.
-  - No password reset / "forgot password" flow.
   - No account settings (change email, change password, delete
     account).
   - `assets`/`prices` stay shared across all users by design (not

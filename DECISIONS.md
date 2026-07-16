@@ -946,3 +946,97 @@ affected (it already has the correct policies applied, confirmed via
 via `git checkout` after confirming with the user, since editing an
 already-applied migration file violates CLAUDE.md's non-negotiables
 regardless of cause.
+
+## D145 — Realized gain (`src/lib/realizedGain.ts`) is a pure TypeScript FIFO simulation, not a SQL view — same reasoning as `xirr()`/`computeTaxHoldingStatus()`
+
+`holdings`'s `avg_cost` fix (migration 0012, D111) proved a `WITH
+RECURSIVE` CTE *can* express a running weighted-average cost in SQL, so
+the same approach for realized gain was considered first. Rejected:
+weighted-average only ever needs one running `(quantity, total_cost)`
+pair per asset, carried forward row by row — a recursive CTE's natural
+shape. FIFO needs a live **queue** of however many partially-consumed
+buy lots happen to still be open, drained from the front and popped
+across an arbitrary, data-dependent number of sells (a single large
+sell can cross many small lots; many small sells can each partially
+drain one big lot) — genuinely stateful queue simulation, not a
+running scalar. Forcing that into a recursive CTE would be far less
+readable than the equivalent 20-line JS loop, and — critically —
+untestable without a live database, unlike a pure function. Same
+justification `xirr()` and `computeTaxHoldingStatus()` already used to
+stay pure TypeScript instead of SQL.
+
+**Fee handling** (given directly in the request, recorded here for
+why it's correct, not as a new choice): a buy lot's unit cost folds in
+its own fee — `(quantity*price + fee) / quantity` — so it's carried
+forward automatically every time that lot is later matched, however
+many sells it takes to drain it. A sell's fee is subtracted from that
+sell's own proceeds once — `quantity*price - fee` — never re-charged
+per matched lot. This mirrors `loadXirr()`'s existing buy/sell cash-flow
+formulas (`holdings/page.tsx`) exactly, so realized gain and XIRR agree
+on what a transaction "really cost/returned" even though they answer
+different questions.
+
+**Oversell edge case** (a sell whose quantity exceeds every buy lot on
+record *combined*, not just the FIFO-head lot — e.g. from data
+predating full history, or an already-warned-but-saved oversell, see
+`wouldCauseNegativeHolding()`/GOTCHAS.md #1): the unmatched portion's
+proceeds are excluded from realized gain entirely, not fabricated at
+either extreme (0 cost = pure profit, which overstates gain; or
+discarding the whole sell, which would understate it by throwing away
+the portion that *does* have a real cost basis). This is the same
+"disclose/exclude what can't be honestly computed, don't guess a
+number for it" choice as D130 (an unconvertible FX holding contributes
+0 to a total, not a guessed conversion). The matched portion's fee is
+prorated by quantity share (`matchedQty/totalSellQty * fee`) rather
+than charging the full fee against a partial fill or ignoring it
+entirely — both of those would distort the matched portion's own
+number for an edge case that shouldn't come up in a normal, fully-
+recorded ledger anyway.
+
+**Scope matches `loadXirr()` exactly**: only `buy`/`sell` rows
+participate; `dividend`/`fee`/`deposit`/`withdraw`/`split` are ignored
+(dividends have their own return line — "Total return (incl.
+dividends)" — realized gain is specifically the trading P&L on
+disposed shares, not income).
+
+**Verified** against 6 hand-computable synthetic cases (single lot, a
+sell crossing two lots, fees on both sides, interleaved DCA buys/sells,
+the oversell edge case above, and non-buy/sell rows being ignored) via
+an ad-hoc script — same validation style as `xirr()`'s known-answer
+cases and D111's JS simulation for the avg_cost fix, since there's no
+test framework in this project (`package.json` has no test runner).
+
+**Also verified against real data**: PRINCIPAL VNEQ-A's actual
+23-transaction history (11 buys, sell 98.6257 @ 12.8871 on
+2025-01-27, more buys, sell 162.8105 @ 13.6969 on 2025-12-03, 4 more
+buys through 2026-07-03; fee = 0 on every row), supplied by the user
+after this environment turned out to have no DB query access to fetch
+it directly (RLS + no session — flagged rather than skipped or faked
+in the first pass). `computeRealizedGain()` returns -137.7317...,
+matching the user's hand-calculated -137.73 to within rounding
+(diff ≈ 0.0017), and the replayed remaining quantity (1437.3001)
+matches the asset's real held quantity in the app — confirming both
+the FIFO matching logic and the sort/replay order are correct against
+a real, non-synthetic transaction history.
+
+## D146 — New "Realized Gain" summary card gets a static caption, not a hover tooltip; `SummaryCard` gains a generic `caption` prop for it
+
+The request offered either a tooltip or a short inline explanation.
+Chose the always-visible caption: a hover-only tooltip is easy to miss
+entirely, and the whole point here is pre-empting a specific, likely
+point of confusion (this number won't match the avg-cost-based figures
+in the same view) — that only works if it's seen without the user
+having to think to hover. `SummaryCard` gets a new optional `caption`
+prop (small muted text under the value) rather than a one-off custom
+card just for this — it's a generic, reusable piece of card chrome,
+unlike the `subLine` prop removed in D141 (D141's `subLine` held a
+*computed* secondary value tied specifically to multi-currency
+display; this `caption` is static explanatory text, unrelated to that
+removed feature and not a revival of it).
+
+Card added as a 5th tile in the Holdings summary row (`Total current
+value`, `Unrealized P&L`, `Total return (incl. dividends)`,
+`Annualized Return (XIRR)`, now `Realized Gain`) — grid changed from
+`lg:grid-cols-4` to `lg:grid-cols-5` so all five sit on one row at
+`lg`+ instead of wrapping 4-then-1. Uses the existing `pnlColor()`
+green/red convention, same as every other P&L figure on this page.

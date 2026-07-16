@@ -57,3 +57,23 @@ from (values
   ('B-BHARATA', 14.7518::numeric)
 ) as v(symbol, price)
 join assets a on a.symbol = v.symbol;
+
+-- 5) Bitcoin — added later (requires migrations/0003_add_crypto_asset_type.sql
+-- to be applied first, since 'crypto' is not in the original asset_type check)
+insert into assets (symbol, name, asset_type, currency) values
+  ('BTC', 'Bitcoin', 'crypto', 'THB');
+
+insert into transactions (portfolio_id, asset_id, type, trade_date, quantity, price)
+select
+  (select id from portfolios where name = 'Retirement'),
+  a.id,
+  'buy',
+  '2026-07-03',
+  0.003025,
+  2996421.211
+from assets a
+where a.symbol = 'BTC';
+
+insert into prices (asset_id, price, source)
+select id, 2073441.44, 'manual'
+from assets where symbol = 'BTC';

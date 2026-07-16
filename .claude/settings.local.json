@@ -164,7 +164,17 @@
       "Bash(curl -s \"http://localhost:3000/api/coingecko-search?q=bitcoin\")",
       "Bash(curl -s \"http://localhost:3000/api/coingecko-search?q=\")",
       "Bash(curl -s \"http://localhost:3000/api/coingecko-profile?id=solana\")",
-      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 19196 -Force\")"
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 19196 -Force\")",
+      "Bash(npx tsc *)",
+      "PowerShell(Start-Process \"http://localhost:3000\")",
+      "Bash(curl -s -o /dev/null -w \"/: %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"/holdings: %{http_code}\\\\n\" http://localhost:3000/holdings)",
+      "Bash(curl -s -o /dev/null -w \"dev server: %{http_code}\\\\n\" http://localhost:3000/ --max-time 2)",
+      "Bash(rm -f src/lib/fx.ts)",
+      "Bash(rm -rf src/app/api/fx-rate)",
+      "Bash(curl -s -o /dev/null -w \"/api/fx-rate: %{http_code}\\\\n\" \"http://localhost:3000/api/fx-rate?from=USD&to=THB&date=2026-07-14\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" --max-time 3 http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" --max-time 3 http://localhost:3000/holdings)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Thanu\\Desktop\\PP\\Claude\\Portfolio Tracker\\src\\app\\api"

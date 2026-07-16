@@ -2,12 +2,17 @@ export function SummaryCard({
   label,
   value,
   suffix,
+  caption,
   colorClass,
   size = "default",
 }: {
   label: string;
   value: string;
   suffix?: string;
+  /** Short static explanatory line under the value — e.g. clarifying a
+   *  figure computed differently from others nearby. Not a computed
+   *  secondary value (that was the old, now-removed `subLine` prop). */
+  caption?: string;
   colorClass?: string;
   size?: "default" | "hero";
 }) {
@@ -29,6 +34,7 @@ export function SummaryCard({
           </span>
         )}
       </p>
+      {caption && <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">{caption}</p>}
     </div>
   );
 }

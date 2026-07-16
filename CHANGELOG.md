@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-07-16 — Realized gain (FIFO): verified against real PRINCIPAL VNEQ-A data
+- Follow-up to the realized-gain feature below: the user supplied
+  PRINCIPAL VNEQ-A's real 23-transaction history (fee = 0 throughout),
+  which this environment couldn't fetch itself (no DB query access).
+  Added it as case 7 in the ad-hoc script.
+- `computeRealizedGain()` returns -137.7317... against the user's
+  hand-calculated -137.73 (matches to within rounding, diff ≈ 0.0017),
+  and the replayed remaining quantity (1437.3001) matches the asset's
+  real held quantity in the app. Confirms the FIFO logic against a
+  real, non-synthetic history, not just synthetic cases. See
+  DECISIONS.md D145.
+
+## 2026-07-16 — Realized gain (FIFO), portfolio-level total
+- New `src/lib/realizedGain.ts`: pure FIFO-matching function, same
+  pattern as `xirr.ts`/`taxHolding.ts` (not a SQL view — FIFO needs a
+  live multi-lot queue, not a running scalar a recursive CTE naturally
+  expresses). Returns one number per asset: total realized gain summed
+  across every sell, not a per-lot breakdown.
+- Verified against 6 hand-computable cases (single lot, a sell crossing
+  two lots, fees on both sides, interleaved DCA, an oversell-beyond-
+  history edge case, and non-buy/sell rows being ignored) via an
+  ad-hoc script — all pass. Could not complete the specific real-data
+  comparison against PRINCIPAL VNEQ-A's 23 real transactions as asked
+  (no DB query access from this environment) — flagged back to the
+  user rather than skipped silently.
+- Holdings page: new `loadRealizedGain()` fetches every buy/sell
+  transaction for the portfolio directly (same shape as `loadXirr()`,
+  not filtered through `holdings`, since a fully-sold asset has no
+  `holdings` row but its past sells still count), groups by asset,
+  runs FIFO per asset, sums into one portfolio total.
+- New "Realized Gain" summary card (5th tile, grid changed
+  `lg:grid-cols-4` → `lg:grid-cols-5`), green/red via the existing
+  `pnlColor()` convention, with a static caption ("FIFO-based — may
+  differ from the average-cost figures shown elsewhere") — `SummaryCard`
+  gained a new optional `caption` prop for this (distinct from the
+  `subLine` prop removed in D141 — that held a computed secondary
+  value, this is static explanatory text).
+- `npx tsc --noEmit` and `npm run lint` both clean.
+
 ## 2026-07-16 — Delete a portfolio, GitHub-style typed-name confirmation
 - Added a trash icon next to the existing rename icon on each Overview
   portfolio card, opening a new `DeletePortfolioModal`.

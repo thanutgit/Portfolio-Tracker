@@ -54,8 +54,8 @@ Tables:
 - `user_settings` — single row (app still reads/writes it that way; see
   below). Columns: `id`, `birth_date` (nullable), `created_at`, and now
   `user_id` (nullable uuid, unique, references `auth.users` — added by
-  `migrations/0007_add_auth_user_id.sql`, prepared but not yet applied
-  or used by the app; see ARCHITECTURE.md's Auth section and
+  `migrations/0007_add_auth_user_id.sql`, applied, though not currently
+  written or read by the app; see ARCHITECTURE.md's Auth section and
   ROADMAP.md Phase 7). Only used to check RMF's age-55 holding-period
   condition (Phase 5). App reads it as `select ... limit 1
   maybeSingle()`; on save, updates that row by `id` if one exists, else
@@ -318,8 +318,8 @@ buy 100 @ 10, sell 50, buy 100 @ 20 should average to `2500/150 =
 16.667`, but the old formula gives `(1000+2000)/200 = 15`. Confirmed
 against real data, not just the synthetic case — see GOTCHAS.md #8.
 
-`migrations/0012_fix_holdings_avg_cost_running_total.sql` (**NOT yet
-applied**) replaces it with a proper running weighted-average cost: a
+`migrations/0012_fix_holdings_avg_cost_running_total.sql` (**applied**)
+replaces it with a proper running weighted-average cost: a
 `WITH RECURSIVE` CTE replays every buy/sell for each asset in
 chronological order (`trade_date`, then `created_at`, then `id` as
 tiebreakers, since `created_at` is identical for every row of a single
@@ -473,8 +473,8 @@ sets `market` from the profile's `exchange` field) become eligible. See
 DECISIONS.md for why this was chosen over a new column.
 
 `prices.source = 'finnhub'` is a new, distinct value from crypto's
-`'api'` (migration `migrations/0011_add_finnhub_price_source.sql`, **not
-yet applied** — see the file and DECISIONS.md) — kept separate so each
+`'api'` (migration `migrations/0011_add_finnhub_price_source.sql`,
+**applied** — see the file and DECISIONS.md) — kept separate so each
 row's actual provider stays identifiable, rather than conflating two
 unrelated external APIs under one generic label.
 
@@ -685,6 +685,43 @@ Only `buy`/`sell`/`dividend` transaction types feed into it — `fee`
 do not. Recomputed on the same non-silent-load schedule as auto-snapshot
 and asset-info (portfolio switch / page load; not on every 60s silent
 crypto-price refresh).
+
+## Realized gain (FIFO)
+`computeRealizedGain()` (`src/lib/realizedGain.ts`) is a pure,
+dependency-free function, same pattern as `xirr()` and
+`computeTaxHoldingStatus()`: given one asset's buy/sell transactions, it
+replays them in `trade_date` order maintaining a FIFO queue of open buy
+lots (`{ quantity, unitCost }`, `unitCost` = `(quantity*price + fee) /
+quantity`), and for every sell drains that queue from the front —
+crossing into a second, third, etc. lot if the sell is larger than the
+lot at the head — accumulating `proceeds - feeShare - costOfDrainedLots`
+per sell. Returns one number: total realized gain summed across every
+sell in the asset's history, not a per-lot breakdown (by design — the
+UI only ever shows a portfolio-level total). A `WITH RECURSIVE` SQL view
+(the shape migration 0012 used for `avg_cost`) was considered and
+rejected — FIFO needs a genuinely stateful multi-lot queue, not a single
+running total, which is simpler and more testable as a plain JS loop
+over already-fetched rows. See DECISIONS.md D145 for the full reasoning,
+including fee handling and the oversell edge case (a sell bigger than
+every buy lot combined — its unmatched portion's proceeds are excluded,
+not fabricated at either extreme).
+
+The Holdings page (`loadRealizedGain()`) fetches every `buy`/`sell`
+transaction for the portfolio directly from `transactions` (same query
+shape as `loadXirr()`, not filtered through `holdings`) — necessary
+because an asset that's since been fully sold has no row in
+`holdings`/`holdings_with_returns` at all, but its past sells still
+contributed real realized gain. Groups rows by `asset_id` client-side
+(FIFO is inherently per-asset — each asset's buy lots are their own
+independent queue), runs `computeRealizedGain()` per asset, and sums
+into one portfolio-level "Realized Gain" summary card — a 5th tile
+alongside Total current value/Unrealized P&L/Total return/XIRR, with a
+static caption ("FIFO-based — may differ from the average-cost figures
+shown elsewhere") since `holdings`' `avg_cost` (weighted-average, D111)
+and this FIFO figure are expected to disagree — same duality real
+brokers (Dime, Streaming, Webull, Phillip) show: displayed avg cost is
+weighted-average, but realized gain is FIFO-matched. Recomputed on the
+same non-silent-load schedule as XIRR/auto-snapshot.
 
 ## Transaction edit/delete safety check
 `wouldCauseNegativeHolding()` (`src/lib/transactions.ts`) is a pure function
