@@ -43,6 +43,13 @@ interface AssetInfo {
   country: string | null;
 }
 
+// Feature flag, not a deletion — the Realized Gain card + its FIFO
+// calculation (src/lib/realizedGain.ts, loadRealizedGain() below) stay
+// fully intact and correct; this only controls whether the card renders
+// and whether that data gets fetched/computed at all. Flip to `true` to
+// bring it back — no other code changes needed. See DECISIONS.md.
+const SHOW_REALIZED_GAIN = false;
+
 const UNCATEGORIZED = "Uncategorized";
 
 function groupByDimension(
@@ -201,7 +208,7 @@ function HoldingsPageContent() {
         loadSnapshots(selectedId);
         const totalMV = (data ?? []).reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
         loadXirr(selectedId, totalMV);
-        loadRealizedGain(selectedId);
+        if (SHOW_REALIZED_GAIN) loadRealizedGain(selectedId);
         loadDrift(selectedId, data ?? []);
       }
     }
@@ -608,7 +615,9 @@ function HoldingsPageContent() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div
+              className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${SHOW_REALIZED_GAIN ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}
+            >
               <SummaryCard
                 label="Total current value"
                 value={loadingHoldings ? "—" : formatMoney(totalMarketValue, baseCurrency)}
@@ -649,20 +658,22 @@ function HoldingsPageContent() {
                     : pnlColor(xirrRate)
                 }
               />
-              <SummaryCard
-                label="Realized Gain"
-                value={
-                  loadingHoldings || loadingRealizedGain || realizedGain === null
-                    ? "—"
-                    : formatSigned(realizedGain, baseCurrency)
-                }
-                colorClass={
-                  loadingHoldings || loadingRealizedGain || realizedGain === null
-                    ? undefined
-                    : pnlColor(realizedGain)
-                }
-                caption="FIFO-based — may differ from the average-cost figures shown elsewhere"
-              />
+              {SHOW_REALIZED_GAIN && (
+                <SummaryCard
+                  label="Realized Gain"
+                  value={
+                    loadingHoldings || loadingRealizedGain || realizedGain === null
+                      ? "—"
+                      : formatSigned(realizedGain, baseCurrency)
+                  }
+                  colorClass={
+                    loadingHoldings || loadingRealizedGain || realizedGain === null
+                      ? undefined
+                      : pnlColor(realizedGain)
+                  }
+                  caption="FIFO-based — may differ from the average-cost figures shown elsewhere"
+                />
+              )}
             </div>
 
             {!loadingHoldings && holdings.length > 0 && (

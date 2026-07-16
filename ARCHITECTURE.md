@@ -723,6 +723,16 @@ brokers (Dime, Streaming, Webull, Phillip) show: displayed avg cost is
 weighted-average, but realized gain is FIFO-matched. Recomputed on the
 same non-silent-load schedule as XIRR/auto-snapshot.
 
+**Currently hidden behind `SHOW_REALIZED_GAIN` (`holdings/page.tsx`,
+`false`)** — not deleted, not commented out: the calculation, the
+`loadRealizedGain()` fetch, and the card JSX are all fully intact,
+just not rendered (and the fetch itself skipped, so nothing runs for a
+number nobody sees) while the flag is off. Flip it to `true` to bring
+the card back — no other code changes needed. The summary grid's
+column count (`lg:grid-cols-4`/`lg:grid-cols-5`) follows the same flag
+so the remaining four cards stay evenly laid out either way. See
+DECISIONS.md D148.
+
 ## Transaction edit/delete safety check
 `wouldCauseNegativeHolding()` (`src/lib/transactions.ts`) is a pure function
 called from `HistoryModal` before an edit or delete of a buy/sell

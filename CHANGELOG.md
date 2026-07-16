@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-07-16 — Hide the Realized Gain card behind a feature flag
+- Added `const SHOW_REALIZED_GAIN = false` at the top of
+  `holdings/page.tsx` — the user isn't an active trader, so the FIFO
+  realized-gain figure isn't useful right now, but wanted it easy to
+  bring back later with zero rework.
+- Gated the card's render *and* the `loadRealizedGain()` fetch behind
+  the flag (no point running the query/computation for a number
+  nothing displays) — everything else (`src/lib/realizedGain.ts`,
+  `computeRealizedGain()`, the card's JSX, the loader function) is
+  fully intact, untouched.
+- Summary grid reverts to `lg:grid-cols-4` (from `lg:grid-cols-5`)
+  when the card is hidden, via the same flag, so the remaining four
+  cards (Total current value, Unrealized P&L, Total return, XIRR)
+  stay evenly laid out with no leftover gap.
+- Flip the flag to `true` to restore the card — no other changes
+  needed. See DECISIONS.md D148.
+- `npx tsc --noEmit` and `npm run lint` both clean.
+
+## 2026-07-16 — Fix: asset picker hid assets past the 8th when opened without a search
+- `TxnAssetCombobox` (`TransactionModal.tsx`) and `AssetRowCombobox`
+  (`prices/page.tsx`) both capped their empty-query dropdown to
+  `options.slice(0, 8)` — the full, already-fetched `assets` list
+  truncated to its first 8 alphabetically-sorted symbols whenever the
+  search box was empty, so anything sorting past position 8 could only
+  ever be found by typing its name directly. See GOTCHAS.md #9 for the
+  full diagnosis (done in the prior round) and root cause.
+- Fix: raised the empty-query cap to 50 in both comboboxes — see
+  DECISIONS.md D147 for why 50 (a defensive ceiling, not a real
+  constraint at this app's actual asset-list scale) rather than fully
+  unbounded or some other number. The searched-results branch keeps
+  its original 8-item cap — unaffected, since a real search already
+  narrows to genuine matches.
+- No server-side search/pagination added this round, per explicit
+  instruction — not warranted at this app's scale.
+- `npx tsc --noEmit` and `npm run lint` both clean.
+
 ## 2026-07-16 — Realized gain (FIFO): verified against real PRINCIPAL VNEQ-A data
 - Follow-up to the realized-gain feature below: the user supplied
   PRINCIPAL VNEQ-A's real 23-transaction history (fee = 0 throughout),

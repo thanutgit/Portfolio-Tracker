@@ -1040,3 +1040,66 @@ value`, `Unrealized P&L`, `Total return (incl. dividends)`,
 `lg:grid-cols-4` to `lg:grid-cols-5` so all five sit on one row at
 `lg`+ instead of wrapping 4-then-1. Uses the existing `pnlColor()`
 green/red convention, same as every other P&L figure on this page.
+
+## D147 — Empty-query asset-picker cap raised from 8 to 50, not removed entirely or set to some other number
+
+Fixing GOTCHAS.md #9 (the empty-query branch of `TxnAssetCombobox`'s
+and `AssetRowCombobox`'s `filtered` `useMemo` silently truncated the
+full asset list to 8, hiding anything sorted past that point). The
+request offered two options: show everything, or raise the cap to 50.
+Chose 50, not fully unbounded, for one reason: `options` here is the
+entire `assets` table, already fetched into memory with no query-level
+limit — at this app's actual scale (a personal tracker's shared asset
+list, realistically dozens of rows, nowhere near hundreds per
+DECISIONS.md's existing "not started" call on server-side asset
+search/pagination) 50 and "unbounded" behave identically today. 50 is
+a defensive ceiling for a pathological future case (e.g. a bulk import)
+rather than a real-world constraint — cheap to keep, and it bounds
+worst-case rendered DOM nodes without reintroducing anything close to
+the original bug's blast radius (there's a wide margin between "will
+plausibly be hit at this app's scale" and 50). The searched-results
+branch keeps its original 8-item cap unchanged — a live search
+narrows to genuine matches, so 8 there is a readability choice, not a
+data-loss risk, and wasn't part of the bug.
+
+No server-side search or pagination this round, per explicit
+instruction — the app doesn't fetch assets any other way today (both
+comboboxes already pull the whole table once, unfiltered, before any
+client-side slicing happens), so introducing per-keystroke server
+queries would be new complexity solving a problem this app doesn't
+have yet. Revisit only if the asset list actually grows toward
+hundreds/thousands of rows.
+
+## D148 — "Realized Gain" card hidden behind a module-level `SHOW_REALIZED_GAIN` flag, not deleted or commented out
+
+Not a rejection of the feature — the user isn't an active trader who
+buys/sells often, so the number isn't useful *right now*, but wanted
+zero rework to bring it back later. A plain `const SHOW_REALIZED_GAIN
+= false` at the top of `holdings/page.tsx` (flip to `true`, nothing
+else changes) beats both alternatives: commenting the JSX out would
+bit-rot silently (no compiler/lint signal if a later edit to
+`SummaryCard` or the surrounding grid broke the commented block, since
+dead comments aren't type-checked), and actually deleting the
+integration (keeping only `src/lib/realizedGain.ts`) would mean
+re-doing the Holdings-page wiring — state, the `loadRealizedGain()`
+call site, the card JSX, the grid column count — from scratch later,
+exactly the "ไม่ต้องเขียนโค้ดใหม่ทั้งหมด" the request ruled out.
+
+Also gated the *data fetch* itself (`if (SHOW_REALIZED_GAIN)
+loadRealizedGain(selectedId)` in `loadHoldings()`), not just the card's
+render — the request only required hiding the card, but there's no
+reason to keep running a query + FIFO computation for a number nothing
+displays. `loadRealizedGain()`, `computeRealizedGain()`, and every
+other line of the feature are untouched — this is the one place
+outside the flag declaration and the two render sites (grid columns,
+card) that changed at all.
+
+Grid: `lg:grid-cols-5` (5 cards) reverts to `lg:grid-cols-4` (4 cards)
+via the same flag, computed inline in the `className` template string
+— both complete class names (`lg:grid-cols-4`/`lg:grid-cols-5`) exist
+as literal strings in source either way, so Tailwind's static class
+scanner sees both regardless of which one is active at runtime; only a
+truly dynamic/interpolated class name (e.g. `` `lg:grid-cols-${n}` ``)
+would fail to be picked up. This keeps the remaining four cards
+(Total current value, Unrealized P&L, Total return, XIRR) laid out
+exactly as they were before D146 added the fifth — no leftover gap.

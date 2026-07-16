@@ -100,7 +100,16 @@ function TxnAssetCombobox({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options.slice(0, 8);
+    // Empty query: show (up to) everything, not just a token handful — an
+    // 8-item cap here silently hid any asset sorted past position 8 from
+    // the no-search-yet dropdown (see GOTCHAS.md). 50 is a defensive
+    // ceiling, not a real-world limit at this app's scale (see
+    // DECISIONS.md) — `options` is already the full, already-fetched
+    // `assets` table, and the list below scrolls (`max-h-40
+    // overflow-y-auto`) regardless of row count.
+    if (!q) return options.slice(0, 50);
+    // A live search narrows to genuine matches, so a tighter cap here
+    // just keeps the open dropdown short and scannable.
     return options
       .filter((a) => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q))
       .slice(0, 8);

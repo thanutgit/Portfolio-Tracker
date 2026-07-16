@@ -210,3 +210,41 @@ aggregate `SUM()`. Test this kind of formula against an interleaved
 buy/sell/buy sequence specifically, not just "buy a few times, sell at
 the end" — that specific ordering is exactly the case where the wrong
 formula still happens to give the right answer, hiding the bug.
+
+## #9 — An 8-item `.slice()` cap silently hid assets from the empty-query asset picker
+**What happened:** Opening the asset search dropdown in "+ Add
+transaction" (and, identically, the Prices page's "Select from list"
+picker) *without typing anything* showed only some of the real assets
+in the system. Typing the missing asset's name found it immediately —
+which looked like a search-relevance bug, but wasn't.
+
+**Root cause:** the Supabase query itself (`.from("assets").select(...)
+.order("symbol")`) has no `.limit()` — it always fetches every row. The
+actual cap was client-side, inside the combobox's own `useMemo`:
+```ts
+if (!q) return options.slice(0, 8);
+return options.filter(...).slice(0, 8);
+```
+Both branches slice to 8, but with very different effect: with no
+search text, the *entire* alphabetically-sorted list gets truncated to
+its first 8 symbols, unconditionally — anything sorting after position
+8 can never appear without being searched for directly. With search
+text, the list is filtered down to real matches *first*, so the same
+slice(8) almost never actually removes anything. Deterministic, not
+random — the same assets are missing on every load, not a different
+one each time.
+
+**Fix:** raised the empty-query branch's cap from 8 to 50 in both
+`TxnAssetCombobox` (`TransactionModal.tsx`) and `AssetRowCombobox`
+(`prices/page.tsx`) — see DECISIONS.md for why 50 specifically. The
+searched-results branch keeps its 8-item cap (a real search narrows to
+few enough matches that it's not the same bug).
+
+**Prevention:** when a UI need ("show a short list") and a correctness
+need ("show everything that matches, including 'no filter' as a valid
+filter") share one `.slice()`/`.limit()` call, they can silently
+conflict — a cap that's reasonable for "top 8 search results" is a
+data-loss bug for "everything, no filter applied yet." Give the
+unfiltered/empty-query case its own explicit ceiling, high enough that
+it's not really a limit at the app's actual data scale, rather than
+reusing whatever cap the filtered case uses.

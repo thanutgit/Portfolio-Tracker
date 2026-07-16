@@ -98,7 +98,10 @@ function AssetRowCombobox({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options.slice(0, 8);
+    // Same fix as TransactionModal's TxnAssetCombobox — see its comment
+    // and DECISIONS.md/GOTCHAS.md for why an 8-item empty-query cap was a
+    // real bug, not a deliberate choice.
+    if (!q) return options.slice(0, 50);
     return options
       .filter((a) => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q))
       .slice(0, 8);
