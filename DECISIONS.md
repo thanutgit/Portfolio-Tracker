@@ -175,10 +175,22 @@ cheaper to keep the existing views untouched and query separately.
 Limits how often the database gets checked/written while still achieving
 the "once a day" goal in practice.
 
+**Partially superseded by D149**: an upsert now also runs on crypto/
+stock auto-refresh, but only when a currently-held asset's price
+actually changed (not on every 60s poll) — the "limit unnecessary
+writes" reasoning above is preserved by that change-detection check,
+not abandoned; only "never on auto-refresh" is reversed.
+
 ## D37 — Auto-snapshot checks-then-inserts; the manual button always upserts (overwrites)
 Auto avoids unnecessary duplicate writes on repeat visits the same day. The
 manual button signals clear user intent to update with the latest
 intraday price.
+
+**Extended by D149**: the load-time auto-snapshot described here is
+unchanged (still check-then-insert-once). The manual button's
+always-upsert behavior is now also what every *other* automatic
+trigger (a real price change, from any source) uses — same upsert,
+more callers, via a newly shared `upsertPortfolioSnapshot()`.
 
 ## D38 — Portfolio cards are full-width horizontal rows, not a grid of tiles
 Fits the left/right layout (icon + name on the left, value + badge on the
@@ -1103,3 +1115,222 @@ truly dynamic/interpolated class name (e.g. `` `lg:grid-cols-${n}` ``)
 would fail to be picked up. This keeps the remaining four cards
 (Total current value, Unrealized P&L, Total return, XIRR) laid out
 exactly as they were before D146 added the fifth — no leftover gap.
+
+## D149 — Portfolio snapshot auto-upserts on every real price change, from every price-update source, not just the once-a-day load-time check (supersedes D36, extends D37)
+
+**Shared implementation, not four reimplementations.** Extracted the
+payload-compute-then-upsert logic (previously local to
+`holdings/page.tsx`, used only by the manual "Save today's value"
+button and the load-time auto-snapshot) into `upsertPortfolioSnapshot()`
+in a new `src/lib/snapshot.ts`. Necessary, not just tidier: the Prices
+page (`/prices`) needed to trigger the exact same upsert for
+requirement #1, but has no already-loaded `holdings` state to reuse —
+the old function took `holdingsData` as a parameter. The shared version
+is self-contained (fetches `holdings_with_returns` by `portfolio_id`
+itself), so every call site — the manual button, load-time
+auto-snapshot, crypto/stock-refresh price-change triggers, and Prices'
+manual-entry trigger — now calls one function that defines what a
+snapshot's numbers mean, rather than several slightly-divergent copies.
+
+**Detecting a "real" price change, not just "a fetch happened."**
+Neither `/api/refresh-crypto-prices` nor `/api/refresh-stock-prices`
+skip inserting a `prices` row when the fetched value is unchanged from
+before — every successful poll writes a new row regardless. Naively
+upserting a snapshot every time either route reports `updated.length >
+0` would upsert on essentially every 60s crypto tick, defeating the
+entire "only when it actually changed" ask. Fixed by comparing each
+route's returned price against the *previously known* price for that
+symbol, client-side, before deciding whether to upsert:
+- **Crypto/stock refresh** (`holdings/page.tsx`): compares against a
+  `lastKnownPricesRef` map of `symbol → last_price` for the
+  *currently-held* assets in the *currently-selected* portfolio only.
+  Deliberately a `useRef`, not read from `holdings` state directly —
+  `refreshCryptoPrices()`/`refreshStockPrices()` are called from a
+  `setInterval`/effect keyed on `selectedId`, so the closure that
+  captures them is fixed for the interval's whole lifetime; reading
+  `holdings` (which changes on every silent reload, independent of
+  `selectedId`) through that stale closure would compare against
+  whatever `holdings` was when the effect last (re)ran, not the latest
+  poll's result. A ref's `.current` sidesteps this — always the latest
+  value regardless of which closure reads it. A symbol not currently
+  held (`prev === undefined`) deliberately does NOT count as
+  "changed," since a price move on an asset this portfolio doesn't
+  hold can't affect this portfolio's total anyway.
+- **Manual price entry** (`prices/page.tsx`): the preview step already
+  fetches each asset's old price from `latest_prices` before save
+  (used for the existing "unusual change" warning) — reused directly:
+  `oldPrice === null || oldPrice !== price` marks a row as a real
+  change, no new query needed.
+
+**Scope of the fan-out differs by trigger, deliberately.** Crypto/stock
+refresh only upserts the *currently-selected* portfolio — matches the
+existing scope of every other Holdings-page mechanism (auto-snapshot,
+XIRR, drift), and avoids adding a "query every portfolio on every 60s
+tick" cost for a background page that only ever displays one portfolio
+at a time. Manual price entry on `/prices` has no such single-portfolio
+context to fall back to at all (this page never loads `portfolios`;
+assets/prices are shared across every portfolio in this app's data
+model, per ARCHITECTURE.md) — so it fans out via the new
+`portfoliosHolding()` (also in `src/lib/snapshot.ts`) to every
+portfolio that actually holds a changed asset, upserting each in
+parallel. The asymmetry is intentional, not an oversight: a portfolio
+not currently open still gets its snapshot correctly caught up the
+next time it IS opened (load-time auto-snapshot, unchanged by this
+decision) — the gap this fixes is specifically "I changed a price and
+never revisited Holdings today," which is exactly `/prices`' situation
+and not crypto/stock refresh's (that only ever fires while Holdings,
+for one specific portfolio, is already open).
+
+**"Save today's value" — kept, not removed.** Recommended and applied:
+even with all of the above, real gaps remain that only the manual
+button covers — most notably, adding a *transaction* today (a buy/sell
+at the current, unchanged price) changes `total_cost`/`total_value`
+without any asset's *price* changing at all, so none of the
+price-change triggers above fire, and if today's snapshot row already
+exists (e.g. from this morning's page load), the load-time
+check-then-insert won't touch it again either. Recording a
+transaction-triggered auto-upsert was out of scope for this round (the
+request was specifically about price-update sources), so the manual
+button remains the correct, low-cost way to force today's snapshot
+current in that case — same reasoning as the original D37, still
+valid, not just left in place out of inertia.
+
+**Partially superseded by D150**: the transaction-added-today gap
+described above is now closed by a 5th, transaction-triggered upsert.
+See D150 for the closed gap, why dividends were deliberately excluded
+from it, and the updated (weaker, but still real) reasoning for keeping
+"Save today's value" now that this specific gap is gone.
+
+## D150 — Buy/sell add/edit/delete also auto-upserts the snapshot (trigger 5); dividends deliberately excluded; "Save today's value" kept for a different reason now
+
+**The gap.** D149 covered every *price*-update source but left one hole
+open on purpose: adding, editing, or deleting a buy/sell transaction
+changes the running quantity/cost the `holdings` view replays from
+`transactions` (migrations/0012's `WITH RECURSIVE` weighted-average-cost
+formula) — and does so regardless of the transaction's `trade_date`,
+since the view always replays the *entire* history fresh on every read.
+That changes today's `total_value`/`total_cost` with no asset `price`
+having moved at all, so none of D149's four triggers fire. This round
+closes it: `TransactionModal.tsx` (`handleSubmit`, covers both the
+single-row and batch-row cases — they're the same code path, an array
+insert of length 1 vs. N) and `HistoryModal.tsx` (`handleTxnSubmit` for
+edits, `handleDeleteTxnClick` for deletes) all call
+`upsertPortfolioSnapshot()` right after their write succeeds, quietly
+(try/catch, swallowed — the transaction itself already saved
+successfully, a snapshot hiccup here just means it catches up on the
+next trigger instead of blocking or erroring the save the user is
+waiting on).
+
+**No price-changed check needed, unlike D149's triggers.** A new/edited/
+deleted buy or sell *always* changes running quantity or cost (that's
+the entire point of the write), so unlike the crypto/stock/manual-price
+triggers, there's nothing to compare against first — always upsert,
+unconditionally.
+
+**Dividends excluded, deliberately.** The `holdings` view's `WITH
+RECURSIVE` replay filters to `t.type in ('buy', 'sell')` only —
+dividends never contribute to `quantity`, `avg_cost`, `cost_basis`, or
+`market_value` in that view at all. Editing or deleting a dividend
+therefore cannot change what `upsertPortfolioSnapshot()` computes, so
+`handleDividendSubmit`/`handleDeleteDividendClick` in `HistoryModal.tsx`
+were left untouched — wiring a trigger there would just be a wasted
+write on every dividend edit, not a correctness fix.
+
+**"Save today's value" — kept, but the reasoning has changed.** D149's
+original justification (the transaction-added-today gap) is gone now
+that trigger 5 exists — by my read, there is no remaining *scenario*
+today's total can legitimately differ from what's stored that isn't
+already covered by one of the five triggers. I still recommend keeping
+the button, but for a different, weaker reason: every automatic trigger
+(all five) fails *silently* by design (try/catch, swallowed, "try again
+next time") — there's deliberately no user-visible error if one of them
+hiccups. The manual button is the only path that surfaces a real error
+(`setError`, shown in the UI) and gives the user a way to force a retry
+right now instead of waiting for the next natural trigger to fire (which,
+for a portfolio that isn't actively traded or price-refreshed, might not
+be for a while). That's a materially smaller justification than before —
+closer to "diagnostic/peace-of-mind fallback" than "closes a real
+functional gap" — worth revisiting if it ever turns out nobody uses it.
+
+**Superseded by D151**: the entire five-trigger, per-cause approach in
+D149/D150 was replaced with a single periodic check on the Holdings
+page — see D151 for why. `upsertPortfolioSnapshot()` itself (the write
+primitive both rounds share) is unaffected; only *what calls it and
+when* changed.
+
+## D151 — Portfolio snapshot keeps itself current via one periodic check on Holdings, not five separately-wired triggers (supersedes D149, D150)
+
+**Why the change of direction.** D149 and D150 chased every individual
+*cause* of a value change — a real crypto/stock price move (detected via
+a `useRef` price-comparison map), a real manual price entry (detected
+via an `oldPrice` comparison, fanned out to every affected portfolio), a
+transaction add/edit/delete (unconditional, but wired into three
+separate call sites across two components). That's five call sites,
+three different "is this a real change" strategies, and a growing list
+of places any future write path would also need to remember to wire up.
+On reflection this is more moving parts than the problem needs: nothing
+about *why* today's total changed actually matters to what gets written
+— `upsertPortfolioSnapshot()` always recomputes fresh from
+`holdings_with_returns` and overwrites, so the only question that
+matters is "is a reasonably-fresh value in there," not "what exact event
+just happened." A periodic check answers that question directly, without
+having to enumerate and correctly detect every possible cause.
+
+**The new mechanism, entirely on Holdings.** `TransactionModal.tsx` and
+`HistoryModal.tsx` no longer call `upsertPortfolioSnapshot()` at all —
+reverted back to save-only, same as before D150. `/prices` no longer
+fans out to affected portfolios either — reverted back to save-only,
+same as before D149 (its `handleConfirm()` no longer imports anything
+from `src/lib/snapshot.ts`). All of that responsibility now lives in
+`holdings/page.tsx` alone, in two places:
+1. Once, right after a fresh (non-silent) holdings load — covers
+   "first visit of the day" / portfolio switch, same case D37/D149's
+   check-then-skip logic covered, but now an unconditional upsert like
+   everything else here rather than a special check-then-skip case.
+2. A `setInterval` that fires every 60 seconds while the page stays
+   open, calling the same unconditional upsert — cleared on unmount or
+   portfolio switch (`selectedId` change), same cleanup pattern already
+   used for the crypto-refresh interval.
+Both call the same `silentUpsertSnapshot()` local helper (quiet,
+try/catch-swallowed, reloads the trend chart's `snapshots` state after a
+successful write) — collapsing what used to be two separately-reasoned
+functions (`autoSnapshotIfMissing` and `silentUpsertSnapshot`) into one,
+since there's no longer a check-then-skip case that needs to behave
+differently from the always-overwrite cases.
+
+**No price-changed detection anymore, anywhere.** The `useRef` price map
+(`lastKnownPricesRef`) is gone entirely, along with the `priceChanged`
+comparison in `refreshCryptoPrices()`/`refreshStockPrices()`. Overwriting
+today's snapshot row with an unchanged value is a harmless no-op write
+(same total, same `(portfolio_id, snapshot_date)` key, no new row) — not
+a correctness risk worth adding client-side detection logic to avoid.
+
+**Why 60 seconds.** Matches the existing crypto-refresh poll interval on
+the same page — one mental "heartbeat" for the whole page instead of two
+independently-tuned timers with no relationship to each other. It's also
+comfortably cheap at this app's scale: one upsert against an
+already-unique-indexed `(portfolio_id, snapshot_date)` key, at most once
+a minute, only while a browser tab actually has Holdings open (not a
+background job, not multiplied across users). Going shorter (e.g. 30s)
+would just double the write count for no visible benefit — the trend
+chart is a daily-granularity chart, not a live ticker, so sub-minute
+freshness has no payoff. Going much longer would start to reintroduce
+the original problem (a stale total sitting for minutes while the tab is
+open).
+
+**`portfoliosHolding()` removed from `src/lib/snapshot.ts`.** It existed
+solely to support `/prices`' fan-out upsert (D149), which no longer
+exists — reverting its only call site left it with zero callers
+anywhere in the codebase. Deleted rather than left in place, since an
+exported function with no callers and no stated future use is dead code,
+not a kept-for-later feature flag (unlike e.g. `SHOW_REALIZED_GAIN`,
+which is dormant by explicit request with a clear re-enable path).
+`upsertPortfolioSnapshot()` itself was kept, as instructed — it's the
+write primitive the new periodic mechanism still calls.
+
+**"Save today's value" — still kept, same D150 reasoning.** The periodic
+check doesn't change the diagnostic-fallback argument from D150: all
+automatic writes here still fail silently (try/catch swallowed), and the
+button remains the only path that surfaces a real error to the user
+and lets them force an immediate retry rather than waiting up to 60s
+for the next tick.

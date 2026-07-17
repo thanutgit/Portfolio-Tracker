@@ -19,6 +19,7 @@ import { CHART_COLORS, UNCATEGORIZED_COLOR } from "@/lib/chartColors";
 import { CONTAINER_CLASS } from "@/lib/layout";
 import { xirr, type CashFlow } from "@/lib/xirr";
 import { computeRealizedGain, type RealizedGainTransaction } from "@/lib/realizedGain";
+import { upsertPortfolioSnapshot } from "@/lib/snapshot";
 import { countDriftedAssets, type DriftHolding, type DriftTarget } from "@/lib/drift";
 import { WarningIcon } from "@/components/DriftBadge";
 import type { HoldingWithReturns } from "@/lib/types";
@@ -203,7 +204,7 @@ function HoldingsPageContent() {
       // switch) — not on every 60s silent crypto-refresh reload. Quiet, like
       // crypto auto-refresh: no loading state, errors swallowed.
       if (!silent) {
-        autoSnapshotIfMissing(selectedId, data ?? []);
+        silentUpsertSnapshot(selectedId);
         loadAssetInfo(data ?? []);
         loadSnapshots(selectedId);
         const totalMV = (data ?? []).reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
@@ -357,52 +358,28 @@ function HoldingsPageContent() {
   }
 
   // portfolio_snapshots = daily total_value/total_cost/cash_value per
-  // portfolio (migrations/0005) — data for a future growth chart, no chart yet.
-  async function computeSnapshotPayload(portfolioId: string, holdingsData: HoldingWithReturns[]) {
-    const totalValue = holdingsData.reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
-    const totalCost = holdingsData.reduce((sum, h) => sum + Number(h.cost_basis ?? 0), 0);
-
-    let cashValue = 0;
-    const assetIds = holdingsData.map((h) => h.asset_id);
-    if (assetIds.length > 0) {
-      const { data: assetsData } = await supabase
-        .from("assets")
-        .select("id, asset_type")
-        .in("id", assetIds);
-      const cashAssetIds = new Set(
-        (assetsData ?? []).filter((a) => a.asset_type === "cash").map((a) => a.id)
-      );
-      cashValue = holdingsData
-        .filter((h) => cashAssetIds.has(h.asset_id))
-        .reduce((sum, h) => sum + Number(h.market_value ?? 0), 0);
-    }
-
-    return {
-      portfolio_id: portfolioId,
-      snapshot_date: new Date().toISOString().slice(0, 10),
-      total_value: totalValue,
-      total_cost: totalCost,
-      cash_value: cashValue,
-    };
-  }
-
-  async function autoSnapshotIfMissing(portfolioId: string, holdingsData: HoldingWithReturns[]) {
+  // portfolio (migrations/0005), plotted by the trend chart. The actual
+  // payload computation + upsert lives in the shared
+  // upsertPortfolioSnapshot() (src/lib/snapshot.ts).
+  //
+  // D151 (supersedes D149/D150): rather than chasing every individual
+  // *cause* of a value change (price tick, transaction add/edit/delete,
+  // each wired up at its own call site), this page just recomputes and
+  // overwrites today's snapshot periodically while it's open — see the
+  // interval effect below. This function is that single write primitive,
+  // called both right after a fresh (non-silent) holdings load and on
+  // every periodic tick. Always an unconditional upsert, never
+  // check-then-skip: overwriting today's row with an unchanged value is a
+  // harmless no-op write, not a correctness risk, so there's no need to
+  // check what's already there first. Quiet — no toast/error banner, same
+  // "try again next tick" philosophy as the old auto-refresh triggers,
+  // since this fires in the background on a timer, not from a click.
+  async function silentUpsertSnapshot(portfolioId: string) {
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const { data: existing } = await supabase
-        .from("portfolio_snapshots")
-        .select("id")
-        .eq("portfolio_id", portfolioId)
-        .eq("snapshot_date", today)
-        .maybeSingle();
-      if (existing) return;
-      const payload = await computeSnapshotPayload(portfolioId, holdingsData);
-      await supabase
-        .from("portfolio_snapshots")
-        .upsert(payload, { onConflict: "portfolio_id,snapshot_date" });
-      await loadSnapshots(portfolioId);
+      const { error } = await upsertPortfolioSnapshot(portfolioId);
+      if (!error) await loadSnapshots(portfolioId);
     } catch {
-      // quiet — same philosophy as crypto auto-refresh, just try again next load
+      // quiet — the next periodic tick will retry
     }
   }
 
@@ -410,12 +387,9 @@ function HoldingsPageContent() {
     if (!selectedId) return;
     setSavingSnapshot(true);
     setError(null);
-    const payload = await computeSnapshotPayload(selectedId, holdings);
-    const { error } = await supabase
-      .from("portfolio_snapshots")
-      .upsert(payload, { onConflict: "portfolio_id,snapshot_date" });
+    const { error } = await upsertPortfolioSnapshot(selectedId);
     if (error) {
-      setError(error.message);
+      setError(error);
     } else {
       setToastMessage("Saved today's value.");
       await loadSnapshots(selectedId);
@@ -463,7 +437,10 @@ function HoldingsPageContent() {
   }, []);
 
   // Always silent: no loading state, no banner. Errors are swallowed — a
-  // failed poll just tries again on the next tick.
+  // failed poll just tries again on the next tick. No longer tracks
+  // whether a price actually changed (D151) — the periodic snapshot
+  // interval below handles keeping portfolio_snapshots current on its own
+  // schedule, independent of what caused a value change.
   async function refreshCryptoPrices() {
     try {
       const res = await fetch("/api/refresh-crypto-prices", { method: "POST" });
@@ -515,6 +492,27 @@ function HoldingsPageContent() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshStockPrices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  // D151: one periodic check replaces the old per-trigger wiring (D149's
+  // price-change detection, D150's transaction-write hooks) — recomputes
+  // and overwrites today's snapshot on a fixed schedule while this page is
+  // open, regardless of *why* the value might have changed. 60s matches
+  // the existing crypto-refresh cadence above (same page, same lifecycle,
+  // one mental "heartbeat" instead of two different timers) and is cheap
+  // enough to not matter: a single upsert on an already-unique-indexed
+  // (portfolio_id, snapshot_date) key, at most once a minute, only while a
+  // tab has this page open. Cleared on unmount/portfolio switch, same
+  // pattern as the crypto-refresh interval, to avoid leaking a timer that
+  // keeps firing (and keeps capturing a stale `selectedId` closure) after
+  // the effect that created it should have stopped.
+  useEffect(() => {
+    if (!selectedId) return;
+    const interval = setInterval(() => {
+      silentUpsertSnapshot(selectedId);
+    }, 60_000);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 

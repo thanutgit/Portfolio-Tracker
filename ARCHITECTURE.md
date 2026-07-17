@@ -50,7 +50,9 @@ Tables:
   each holding's `asset_type`, which isn't in `holdings`/
   `holdings_with_returns`, so it's fetched via one small separate `assets`
   query at snapshot-time only, rather than extending either view. See
-  migrations/0005_add_portfolio_snapshots.sql and DECISIONS.md D35–D37.
+  migrations/0005_add_portfolio_snapshots.sql and DECISIONS.md D35–D37
+  (D36/D37 partially superseded/extended by D151 — see "Portfolio
+  snapshot auto-upsert" below for the current write triggers).
 - `user_settings` — single row (app still reads/writes it that way; see
   below). Columns: `id`, `birth_date` (nullable), `created_at`, and now
   `user_id` (nullable uuid, unique, references `auth.users` — added by
@@ -617,13 +619,57 @@ change — same page, local `mode` state):
   `'csv'` for pasted rows), distinguishing the two in the `prices` table.
   Switching tabs clears any in-progress preview from the other mode.
 
+## Portfolio snapshot auto-upsert
+`upsertPortfolioSnapshot(portfolioId)` (`src/lib/snapshot.ts`) is the one
+shared implementation of "compute today's total_value/total_cost/cash_value
+and overwrite today's `portfolio_snapshots` row" (D37's original upsert
+shape). Self-contained: fetches `holdings_with_returns` (and the
+cash-asset lookup, D35) by `portfolio_id` itself rather than taking
+already-loaded state as a parameter.
+
+A single periodic check on Holdings keeps the snapshot current, rather
+than wiring a separate trigger into every place a value could change
+(D151 — supersedes D149/D150's five separately-detected triggers):
+1. **First load of the day / portfolio switch** — right after a fresh
+   (non-silent) holdings load, `holdings/page.tsx` calls
+   `silentUpsertSnapshot()` once, unconditionally (no longer
+   check-then-skip — overwriting today's row with an unchanged value is
+   a harmless no-op).
+2. **Every 60 seconds while Holdings stays open** — a `setInterval`
+   (cleared on unmount/portfolio switch, same cleanup pattern as the
+   crypto-refresh interval below) calls the same `silentUpsertSnapshot()`
+   for the currently-selected portfolio, unconditionally. This is what
+   actually keeps the snapshot fresh in response to a price move,
+   dividend, or transaction — no per-cause detection logic needed
+   anywhere, since the function always recomputes fresh from
+   `holdings_with_returns` regardless of *why* the last known value is
+   stale. See DECISIONS.md D151 for why 60s and why this replaced the
+   old per-trigger approach.
+
+Neither `TransactionModal.tsx`/`HistoryModal.tsx` (buy/sell add, edit,
+delete) nor `/prices` (manual price entry) call `upsertPortfolioSnapshot()`
+directly anymore — both did in the superseded D149/D150 design; the
+periodic check on Holdings now covers what they used to trigger
+individually. Crypto/stock auto-refresh (below) no longer compares
+against a previously-known price either — that detection logic
+(`lastKnownPricesRef`) existed solely to decide *whether* to upsert, which
+is now the periodic interval's job, not theirs.
+
+The manual **"Save today's value" button** (Holdings) is unchanged and
+still calls `upsertPortfolioSnapshot()` directly on click — kept as the
+one path that surfaces a real error to the user (`setError`) instead of
+failing silently like every automatic write above, and lets them force
+an immediate retry instead of waiting up to 60s for the next tick. See
+DECISIONS.md D151.
+
 ## Portfolio trend chart
 `TrendChart` (`src/components/TrendChart.tsx`) plots `portfolio_snapshots`
 for the currently-selected portfolio only (`.eq("portfolio_id", ...)`),
 refetched whenever the Holdings page's `selectedId` changes (same effect
 that reloads holdings) and again right after any write to
-`portfolio_snapshots` (auto-snapshot or the "Save today's value" button),
-so the chart never needs a manual page refresh to catch up.
+`portfolio_snapshots` (the load-time upsert, each periodic tick, or the
+manual "Save today's value" button), so the chart never needs a manual
+page refresh to catch up.
 
 Renders nothing chart-like with fewer than 2 snapshot rows — shows a
 plain message instead ("not enough data yet"). A single point (or zero)

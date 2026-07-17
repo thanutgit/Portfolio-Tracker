@@ -1,5 +1,72 @@
 # Changelog
 
+## 2026-07-17 — Portfolio snapshot now keeps itself current via one periodic check, not five separate triggers
+- Replaced the D149/D150 five-trigger design with a single mechanism on
+  Holdings: `upsertPortfolioSnapshot()` runs once right after a fresh
+  holdings load, then again every 60s via `setInterval` for as long as
+  the page stays open (cleared on unmount/portfolio switch) — always
+  unconditional, no per-cause "did this actually change" detection.
+- Reverted the D150 call sites: `TransactionModal.tsx` and
+  `HistoryModal.tsx` no longer call `upsertPortfolioSnapshot()`.
+- Reverted the D149 call sites: `/prices` no longer fans out an upsert
+  to affected portfolios after a manual price save; crypto/stock
+  auto-refresh no longer compares against a previously-known price
+  (`lastKnownPricesRef` removed) before deciding whether to upsert.
+- Removed `portfoliosHolding()` from `src/lib/snapshot.ts` — its only
+  caller was the now-reverted `/prices` fan-out, so it had zero
+  remaining callers. `upsertPortfolioSnapshot()` itself is unchanged and
+  still the one shared write primitive.
+- "Save today's value" stays, for the same reason as before: every
+  automatic write here still fails silently, so it's the one path that
+  surfaces a real error and lets the user force an immediate retry.
+- See DECISIONS.md D151.
+
+## 2026-07-17 — Portfolio snapshot also auto-upserts on buy/sell add/edit/delete (trigger 5)
+- `TransactionModal.tsx` (single and batch — same insert path) and
+  `HistoryModal.tsx` (edit and delete of a buy/sell) now call
+  `upsertPortfolioSnapshot()` right after their write succeeds,
+  unconditionally — a new/edited/deleted buy or sell always changes the
+  `holdings` view's running quantity/cost, regardless of the
+  transaction's date, so there's no price-changed-style check needed
+  first. Dividend add/edit/delete deliberately does NOT trigger this —
+  the `holdings` view excludes dividends entirely, so they can't change
+  today's total. See DECISIONS.md D150.
+- Closes the one real gap D149 (below) left open: adding a transaction
+  today at an unchanged price used to require the manual "Save today's
+  value" button. The button stays, but now mainly as the one trigger
+  that surfaces errors instead of failing silently.
+
+## 2026-07-17 — Portfolio snapshot auto-upserts on real price changes, not just once a day
+- New `src/lib/snapshot.ts`: `upsertPortfolioSnapshot(portfolioId)` — a
+  single shared implementation of the compute-payload-then-upsert logic
+  previously local to `holdings/page.tsx`, self-contained (fetches its
+  own `holdings_with_returns`) so it can be called from pages with no
+  already-loaded holdings state. Also `portfoliosHolding(assetIds)` —
+  every portfolio actually holding at least one of the given assets.
+- Holdings page: crypto auto-refresh (60s) and stock auto-refresh
+  (Finnhub, on load) now silently upsert the current portfolio's
+  snapshot whenever a currently-held asset's price genuinely changed
+  — detected via a `useRef` price map (avoids a stale-closure bug from
+  the `setInterval`), not just "a fetch happened" (both refresh APIs
+  insert a new `prices` row every poll regardless of whether the value
+  moved).
+- Prices page (`/prices`): after a manual save (single or CSV paste),
+  finds every portfolio holding an asset whose price actually changed
+  and upserts each of their snapshots — fans out to all affected
+  portfolios, since this page has no single "current portfolio"
+  context (assets/prices are shared across portfolios).
+- Load-time auto-snapshot (first visit/portfolio-switch of the day)
+  is unchanged — still check-then-insert-once, not an upsert.
+- "Save today's value" button kept, unchanged behavior — still needed
+  for the one remaining gap none of the above cover: a transaction
+  added today at an unchanged price (changes the portfolio total
+  without any price changing).
+- Supersedes/extends D36/D37 — see DECISIONS.md D149 for the full
+  reasoning (shared implementation, real-change detection, why the
+  fan-out scope differs between Holdings' triggers and Prices',
+  keeping the manual button).
+- `npx tsc --noEmit` and `npm run lint` both clean.
+
 ## 2026-07-16 — Hide the Realized Gain card behind a feature flag
 - Added `const SHOW_REALIZED_GAIN = false` at the top of
   `holdings/page.tsx` — the user isn't an active trader, so the FIFO
