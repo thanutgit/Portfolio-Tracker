@@ -1,15 +1,14 @@
 import { supabase } from "@/lib/supabase";
 
 // Single shared implementation of "write today's portfolio_snapshots row,
-// overwriting whatever's already there" — the exact upsert shape the
-// manual "Save today's value" button has always used (D37). Called from
-// Holdings (`holdings/page.tsx`) both right after a fresh holdings load
-// and on a periodic interval while the page stays open (D151) — one
-// place that defines what a snapshot's numbers mean, regardless of what
-// triggered the write. Self-contained (fetches its own data by
-// portfolio_id) rather than taking already-loaded holdings as a
-// parameter, so any future caller can use it without first loading
-// holdings state itself. See DECISIONS.md.
+// overwriting whatever's already there" (originally D37's manual-button
+// upsert shape). Called from Holdings (`holdings/page.tsx`) both right
+// after a fresh holdings load and on a periodic interval while the page
+// stays open (D151) — one place that defines what a snapshot's numbers
+// mean, regardless of what triggered the write. Self-contained (fetches
+// its own data by portfolio_id) rather than taking already-loaded
+// holdings as a parameter, so any future caller can use it without first
+// loading holdings state itself. See DECISIONS.md.
 export async function upsertPortfolioSnapshot(
   portfolioId: string
 ): Promise<{ error: string | null }> {

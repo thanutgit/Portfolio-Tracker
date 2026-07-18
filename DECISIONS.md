@@ -1334,3 +1334,43 @@ automatic writes here still fail silently (try/catch swallowed), and the
 button remains the only path that surfaces a real error to the user
 and lets them force an immediate retry rather than waiting up to 60s
 for the next tick.
+
+**Superseded by D152**: the button itself was removed at the user's
+explicit request. See D152 for why the diagnostic-fallback argument
+above was overridden rather than revised.
+
+## D152 — "Save today's value" button removed (supersedes the keep-the-button conclusion in D149/D150/D151)
+
+**What changed.** The manual button, its `handleSaveSnapshot()` handler,
+and its dedicated `savingSnapshot` loading state are gone from
+`holdings/page.tsx`. `upsertPortfolioSnapshot()` now has exactly two
+callers left, both inside `holdings/page.tsx`: the post-load write and
+the 60s periodic-interval write from D151. `src/lib/snapshot.ts` itself
+is unchanged, per instruction — it's still the one write primitive both
+remaining triggers call.
+
+**Why this overrides three previous rounds' "keep it" conclusion.**
+D149, D150, and D151 each independently reasoned their way to keeping
+the button — the strongest version of that argument (D150/D151) was
+that every automatic trigger fails silently, so the button was the only
+path that surfaced a real error and let the user force an immediate
+retry rather than wait up to 60s. That reasoning wasn't wrong, but it
+was explicitly a judgment call flagged for the user each time ("worth
+revisiting if it ever turns out nobody uses it") rather than a hard
+requirement — and this round the user decided directly that the
+diagnostic value isn't worth the persistent UI real estate at this
+app's actual usage pattern (personal, not actively monitored for
+silent-failure edge cases). Recorded here rather than silently dropped,
+per this file's append-only convention: the previous reasoning was
+sound *given its assumptions*, it's the user's own preference that
+changed the tradeoff, not new evidence that the reasoning itself was
+flawed.
+
+**No replacement error-surfacing was added.** If a periodic tick's
+upsert fails, it still fails exactly as silently as before (caught,
+swallowed, retried on the next tick) — there is now no user-facing way
+to see or force-retry a stuck snapshot short of reloading the page
+(which re-triggers the load-time write). This is a known, accepted
+tradeoff of the removal, not an oversight — flagging it explicitly in
+case a future silent-failure pattern turns out to matter enough to
+revisit.

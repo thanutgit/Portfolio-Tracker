@@ -179,7 +179,6 @@ function HoldingsPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [historyTarget, setHistoryTarget] = useState<HoldingWithReturns | null>(null);
   const [cryptoLastUpdated, setCryptoLastUpdated] = useState<string | null>(null);
-  const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
 
@@ -324,10 +323,10 @@ function HoldingsPageContent() {
     setDriftedCount(countDriftedAssets(driftHoldings, driftTargets));
   }
 
-  // Trend chart data — independent of the autoSnapshotIfMissing/
-  // handleSaveSnapshot writes below, so it always reflects whatever
-  // history already exists even before this load's own snapshot write (if
-  // any) finishes; those two call it again afterward to pick up a
+  // Trend chart data — independent of the silentUpsertSnapshot() writes
+  // below, so it always reflects whatever history already exists even
+  // before this load's own snapshot write (if any) finishes;
+  // silentUpsertSnapshot() calls it again afterward to pick up a
   // brand-new point immediately.
   async function loadSnapshots(portfolioId: string) {
     const { data, error } = await supabase
@@ -368,12 +367,13 @@ function HoldingsPageContent() {
   // overwrites today's snapshot periodically while it's open — see the
   // interval effect below. This function is that single write primitive,
   // called both right after a fresh (non-silent) holdings load and on
-  // every periodic tick. Always an unconditional upsert, never
-  // check-then-skip: overwriting today's row with an unchanged value is a
-  // harmless no-op write, not a correctness risk, so there's no need to
-  // check what's already there first. Quiet — no toast/error banner, same
-  // "try again next tick" philosophy as the old auto-refresh triggers,
-  // since this fires in the background on a timer, not from a click.
+  // every periodic tick — the only two triggers left after D152 removed
+  // the manual "Save today's value" button. Always an unconditional
+  // upsert, never check-then-skip: overwriting today's row with an
+  // unchanged value is a harmless no-op write, not a correctness risk, so
+  // there's no need to check what's already there first. Quiet — no
+  // toast/error banner, since this fires in the background on a timer,
+  // not from a click.
   async function silentUpsertSnapshot(portfolioId: string) {
     try {
       const { error } = await upsertPortfolioSnapshot(portfolioId);
@@ -381,20 +381,6 @@ function HoldingsPageContent() {
     } catch {
       // quiet — the next periodic tick will retry
     }
-  }
-
-  async function handleSaveSnapshot() {
-    if (!selectedId) return;
-    setSavingSnapshot(true);
-    setError(null);
-    const { error } = await upsertPortfolioSnapshot(selectedId);
-    if (error) {
-      setError(error);
-    } else {
-      setToastMessage("Saved today's value.");
-      await loadSnapshots(selectedId);
-    }
-    setSavingSnapshot(false);
   }
 
   async function handleTransactionSaved(count: number) {
@@ -581,21 +567,12 @@ function HoldingsPageContent() {
                   ? `Crypto prices last updated: ${formatDateTime(cryptoLastUpdated)}`
                   : "Crypto prices not yet fetched"}
               </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowAddTransaction(true)}
-                  className="cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-blue-700 hover:shadow-md active:translate-y-0 active:shadow-sm"
-                >
-                  + Add transaction
-                </button>
-                <button
-                  onClick={handleSaveSnapshot}
-                  disabled={savingSnapshot || holdings.length === 0}
-                  className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-gray-50 hover:shadow-md active:translate-y-0 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-                >
-                  {savingSnapshot ? "Saving…" : "Save today's value"}
-                </button>
-              </div>
+              <button
+                onClick={() => setShowAddTransaction(true)}
+                className="cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all duration-150 hover:-translate-y-px hover:bg-blue-700 hover:shadow-md active:translate-y-0 active:shadow-sm"
+              >
+                + Add transaction
+              </button>
             </div>
 
             {unpricedCount > 0 && (

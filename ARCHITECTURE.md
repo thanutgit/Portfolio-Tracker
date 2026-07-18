@@ -44,15 +44,16 @@ Tables:
   always an upsert on that pair, never a plain insert (see GOTCHAS.md #1).
   `total_value` / `total_cost` are computed client-side by summing
   `holdings_with_returns.market_value` / `.cost_basis` for the *current*
-  holdings at the moment the Holdings page loads (or the "Save today's
-  value" button is clicked) — NOT reconstructed retroactively from
-  historical `transactions` + `prices` for past dates. `cash_value` needs
-  each holding's `asset_type`, which isn't in `holdings`/
-  `holdings_with_returns`, so it's fetched via one small separate `assets`
-  query at snapshot-time only, rather than extending either view. See
-  migrations/0005_add_portfolio_snapshots.sql and DECISIONS.md D35–D37
-  (D36/D37 partially superseded/extended by D151 — see "Portfolio
-  snapshot auto-upsert" below for the current write triggers).
+  holdings at the moment of a write (Holdings page load, or the periodic
+  60s tick — there is no manual save button anymore, D152) — NOT
+  reconstructed retroactively from historical `transactions` + `prices`
+  for past dates. `cash_value` needs each holding's `asset_type`, which
+  isn't in `holdings`/`holdings_with_returns`, so it's fetched via one
+  small separate `assets` query at snapshot-time only, rather than
+  extending either view. See migrations/0005_add_portfolio_snapshots.sql
+  and DECISIONS.md D35–D37 (D36/D37 partially superseded/extended by
+  D151/D152 — see "Portfolio snapshot auto-upsert" below for the current
+  write triggers).
 - `user_settings` — single row (app still reads/writes it that way; see
   below). Columns: `id`, `birth_date` (nullable), `created_at`, and now
   `user_id` (nullable uuid, unique, references `auth.users` — added by
@@ -655,21 +656,20 @@ against a previously-known price either — that detection logic
 (`lastKnownPricesRef`) existed solely to decide *whether* to upsert, which
 is now the periodic interval's job, not theirs.
 
-The manual **"Save today's value" button** (Holdings) is unchanged and
-still calls `upsertPortfolioSnapshot()` directly on click — kept as the
-one path that surfaces a real error to the user (`setError`) instead of
-failing silently like every automatic write above, and lets them force
-an immediate retry instead of waiting up to 60s for the next tick. See
-DECISIONS.md D151.
+There is no manual save button anymore — the "Save today's value" button
+(and its `handleSaveSnapshot()`/`savingSnapshot` state) was removed from
+Holdings; the two triggers above are the only writers of
+`portfolio_snapshots` left. A failed periodic write is silent (caught,
+swallowed, retried on the next tick) with no user-facing way to force an
+immediate retry — a known, accepted tradeoff. See DECISIONS.md D152.
 
 ## Portfolio trend chart
 `TrendChart` (`src/components/TrendChart.tsx`) plots `portfolio_snapshots`
 for the currently-selected portfolio only (`.eq("portfolio_id", ...)`),
 refetched whenever the Holdings page's `selectedId` changes (same effect
 that reloads holdings) and again right after any write to
-`portfolio_snapshots` (the load-time upsert, each periodic tick, or the
-manual "Save today's value" button), so the chart never needs a manual
-page refresh to catch up.
+`portfolio_snapshots` (the load-time upsert or each periodic tick), so
+the chart never needs a manual page refresh to catch up.
 
 Renders nothing chart-like with fewer than 2 snapshot rows — shows a
 plain message instead ("not enough data yet"). A single point (or zero)

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-17 — Removed the "Save today's value" manual button
+- `holdings/page.tsx`: removed the button, `handleSaveSnapshot()`, and
+  the `savingSnapshot` loading state. `upsertPortfolioSnapshot()` now
+  has exactly two callers, both automatic (load-time and the 60s
+  periodic tick from D151) — `src/lib/snapshot.ts` itself is unchanged.
+- No replacement error-surfacing was added: a failed periodic write is
+  still silent (caught, swallowed, retried next tick), and there's now
+  no user-facing way to force an immediate retry short of reloading the
+  page. Known, accepted tradeoff — see DECISIONS.md D152.
+
 ## 2026-07-17 — Portfolio snapshot now keeps itself current via one periodic check, not five separate triggers
 - Replaced the D149/D150 five-trigger design with a single mechanism on
   Holdings: `upsertPortfolioSnapshot()` runs once right after a fresh
