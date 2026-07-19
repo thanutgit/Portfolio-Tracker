@@ -30,10 +30,12 @@ gone from the codebase, confirmed by repo-wide grep). No schema change —
 validation only; `transactions.fx_rate_to_base` (migration 0014) stays
 in the schema, unused. Allocation by currency still not started.
 
-Realized gain via FIFO — not started. Real brokers (Dime, Streaming,
-Webull, Phillip) match sell lots FIFO for realized gain even though
-displayed avg cost is weighted-average (same as this app). This app
-only shows unrealized P&L; no realized-gain tracking exists yet.
+Realized gain via FIFO — built and verified (src/lib/realizedGain.ts,
+confirmed against real PRINCIPAL VNEQ-A 23-transaction history), but
+hidden behind a feature flag (SHOW_REALIZED_GAIN = false in
+holdings/page.tsx) — the user decided they don't need to see it since
+they're not an active trader. Flip the flag to re-enable; no rework
+needed. See DECISIONS.md D145-D148.
 
 ## Phase 4 — history & benchmark (done)
 `portfolio_snapshots` (done), the growth/trend chart on Holdings (done,
@@ -42,6 +44,11 @@ using `recharts`), XIRR / money-weighted annualized return (done,
 — quiet badges/banner on Overview and Holdings, reusing the Rebalancing
 page's own drift formula) — benchmark comparison (SET, S&P 500) —
 considered and dropped, see DECISIONS.md.
+
+The auto-snapshot write mechanism went through several rounds
+(D36/D37 → D149/D150 → D151/D152) before settling on its current form:
+one periodic 60s check on the Holdings page, no other trigger sites, and
+no manual "Save today's value" button (removed in D152).
 
 ## Phase 5 — Thai tax & live prices (in progress)
 RMF/SSF/ThaiESG holding-period tracking (done — `src/lib/taxHolding.ts`,

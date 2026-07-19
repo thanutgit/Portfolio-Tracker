@@ -96,8 +96,9 @@ migration `0012` after being caught with real data. See `GOTCHAS.md` #8.
   Unrealized P&L
 - **XIRR** — money-weighted annualized return, accounting for the actual
   date each cash flow occurred
-- Portfolio value trend chart (daily snapshots, automatic + manual "save
-  today's value")
+- Portfolio value trend chart (daily snapshot, kept fresh by a periodic
+  60s check while Holdings is open — no manual save button; see
+  `DECISIONS.md` D151/D152)
 - Sector and country allocation donut charts
 - Custom **DatePicker** (free-typed DD/MM/YYYY with a click-to-pick calendar)
   everywhere a date is entered — replaces the native browser date input,
@@ -137,12 +138,18 @@ migration `0012` after being caught with real data. See `GOTCHAS.md` #8.
   is the same for everyone; there's no reason to duplicate that data
   per-user)
 
+### Built, but hidden
+- **Realized gain (FIFO)** — matches sell lots first-in-first-out for
+  realized gain, the same method real brokers (Dime, Streaming, Webull,
+  Phillip) use, even though the *displayed* average cost is
+  weighted-average (same as this app — the two are expected to differ,
+  by design). Verified against real transaction history, not just
+  synthetic cases. Currently hidden behind a feature flag
+  (`SHOW_REALIZED_GAIN = false` in `holdings/page.tsx`) — not needed
+  day-to-day for a buy-and-hold portfolio; flip the flag to bring the
+  summary card back with no rework. See `DECISIONS.md` D145–D148.
+
 ### Not yet built (see `ROADMAP.md` for details)
-- **Realized gain via FIFO** — real brokers (Dime, Streaming, Webull,
-  Phillip) match sell lots first-in-first-out for realized gain/tax
-  reporting, even though the *displayed* average cost is weighted-average
-  (same as this app). This app doesn't track realized gain at all yet —
-  everything shown is unrealized (current holding vs. its average cost).
 - Live price API for Thai funds (no good free API exists; manual/CSV entry
   covers this instead)
 - LLM-assisted analysis (Phase 6 — on hold, scope not yet defined)
