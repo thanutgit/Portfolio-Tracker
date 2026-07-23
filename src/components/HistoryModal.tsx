@@ -624,7 +624,7 @@ export function HistoryModal({
                     <label className={LABEL_CLASS}>Quantity (units/shares)</label>
                     <input
                       type="number"
-                      step="0.000001"
+                      step="any"
                       min="0"
                       value={txnQuantity}
                       onChange={(e) => setTxnQuantity(e.target.value)}
@@ -637,7 +637,7 @@ export function HistoryModal({
                     <label className={LABEL_CLASS}>Price per unit ({currency})</label>
                     <input
                       type="number"
-                      step="0.000001"
+                      step="any"
                       min="0"
                       value={txnPrice}
                       onChange={(e) => setTxnPrice(e.target.value)}
@@ -652,7 +652,7 @@ export function HistoryModal({
                   <label className={LABEL_CLASS}>Fee (optional)</label>
                   <input
                     type="number"
-                    step="0.01"
+                    step="any"
                     min="0"
                     value={txnFee}
                     onChange={(e) => setTxnFee(e.target.value)}

@@ -11,9 +11,18 @@ interface FinnhubProfile {
 
 // Called once, right after the user picks a result from finnhub-search —
 // not on every keystroke — to auto-fill sector/country/currency/market in
-// the "new asset" form. Finnhub returns `{}` (200 OK) for a symbol with no
-// profile data, which isn't an error — the caller just falls back to
-// leaving those fields blank for manual entry.
+// the "new asset" form. Always returns 200 with whatever Finnhub actually
+// gave us, defaulting every field to null when it didn't — never a 4xx/5xx
+// for anything Finnhub-side. Finnhub returns `{}` (200 OK) for plenty of
+// real, valid symbols with no profile data (ETFs on the free tier), but a
+// symbol can also make Finnhub respond with a genuine non-2xx status — e.g.
+// a secondary/regional cross-listing like "SCHD.MX" (Mexico's BMV listing
+// of the real, US-listed SCHD), which /search can surface but /profile2
+// apparently won't return fundamentals for on the free tier. Both cases
+// mean the exact same thing to this route's caller — "no profile data for
+// this symbol" — so both get the exact same graceful response instead of
+// one silently degrading and the other surfacing as a 502. See
+// GOTCHAS.md and DECISIONS.md.
 export async function GET(request: Request) {
   const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) {
@@ -26,30 +35,23 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Missing symbol." }, { status: 400 });
   }
 
-  let body: FinnhubProfile;
+  // Starts empty and only ever gets overwritten by a successful, parseable
+  // 2xx response below — every other outcome (network error, timeout, a
+  // non-2xx status, a 2xx with a body that fails to parse as JSON) just
+  // leaves it at `{}`, falling through to the same all-null response.
+  let body: FinnhubProfile = {};
   try {
     const res = await fetch(
       `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`,
       { signal: AbortSignal.timeout(8_000) }
     );
-    if (!res.ok) {
-      const status = res.status === 429 ? 429 : 502;
-      return NextResponse.json(
-        {
-          error:
-            res.status === 429
-              ? "Finnhub rate limit hit — try again in a bit."
-              : `Finnhub API returned ${res.status}.`,
-        },
-        { status }
-      );
+    if (res.ok) {
+      body = await res.json();
     }
-    body = await res.json();
   } catch {
-    return NextResponse.json(
-      { error: "Couldn't reach Finnhub (network error or timeout)." },
-      { status: 502 }
-    );
+    // Quiet — same graceful-degradation philosophy as the rest of this
+    // route; the caller doesn't distinguish why profile data is
+    // unavailable, only that it is.
   }
 
   return NextResponse.json({

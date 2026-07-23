@@ -21,10 +21,16 @@ export async function POST() {
     return NextResponse.json({ error: "FINNHUB_API_KEY is not configured." }, { status: 500 });
   }
 
+  // Filtered by price_source, not asset_type — the one auto-fetch
+  // eligibility signal (migrations/0015, DECISIONS.md D154). Querying
+  // `.eq("asset_type", "stock")` here would silently exclude any
+  // `asset_type = 'etf'` row (e.g. a Finnhub-created ETF like SCHD,
+  // auto-classified since D155) even though it's just as eligible — the
+  // two types behave identically for auto-fetch, only the label differs.
   const { data: assets, error: assetsError } = await supabase
     .from("assets")
-    .select("id, symbol, asset_type, market")
-    .eq("asset_type", "stock");
+    .select("id, symbol, price_source")
+    .eq("price_source", "finnhub");
 
   if (assetsError) {
     return NextResponse.json({ error: assetsError.message }, { status: 500 });

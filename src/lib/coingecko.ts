@@ -1,9 +1,10 @@
 // Whether this asset has CoinGecko-based auto price-refresh — determined
-// by the DB-backed `coingecko_id` column (migrations/0013), not a
-// hardcoded symbol list. Supersedes D20's original { BTC, ETH } map: any
-// crypto asset created via TransactionModal's "Search asset" mode gets a
-// real CoinGecko id at creation time, so this scales to any coin instead
-// of only the two symbols that used to be hardcoded in this file.
-export function hasAutoFetch(asset: { coingecko_id: string | null }): boolean {
-  return asset.coingecko_id != null;
+// by `assets.price_source` (migrations/0015), a dedicated column set
+// directly at asset-creation time. `coingecko_id` used to double as this
+// eligibility flag (supersedes D20's original hardcoded { BTC, ETH } map,
+// then D95-era reuse) — kept as the actual CoinGecko coin id
+// /api/refresh-crypto-prices needs, but no longer read here as an
+// eligibility check. See DECISIONS.md D154.
+export function hasAutoFetch(asset: { price_source: string | null }): boolean {
+  return asset.price_source === "coingecko";
 }

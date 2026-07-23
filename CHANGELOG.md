@@ -1,5 +1,115 @@
 # Changelog
 
+## 2026-07-17 — Fix: /api/finnhub-profile 502'd for cross-listed symbols instead of degrading gracefully
+- `GET /api/finnhub-profile?symbol=SCHD.MX` (a regional cross-listing of
+  SCHD, surfaced by `/search` after last round's ETP/ETF filter
+  widening) returned a 502 instead of the same graceful all-null
+  response an ordinary empty-profile ETF already got.
+- The route no longer returns any error status for a Finnhub-side
+  failure of any kind — non-2xx response, network error/timeout, or an
+  unparseable body all now degrade to the same all-null `200` response
+  as Finnhub's own `{}` empty-profile case. Only a missing
+  `FINNHUB_API_KEY` (500) or missing `symbol` param (400) remain real
+  errors — both are this app's own request problem, not Finnhub's.
+- No client-side change needed: `TransactionModal.tsx`'s existing
+  `if (res.ok)` handling already treats null fields correctly, and its
+  "Sector/Country not available" amber notice — previously unreachable
+  on a 502 — now correctly fires for this case too.
+- Verified against the real Finnhub API: `SCHD.MX` → all-null `200`
+  (previously `502`); `AAPL` → unaffected, real data still returned.
+- See GOTCHAS.md #12 and DECISIONS.md D156.
+
+## 2026-07-17 — Auto-classify stock vs. ETF from Finnhub's own search result type
+- `/api/finnhub-search`: expanded the `type` filter from `"Common
+  Stock"` only to also allow `"ETP"`/`"ETF"` through — previously a real
+  ETF like SCHD was silently dropped from `/search` results entirely,
+  only ever reachable via the "verified via direct lookup" `/quote`
+  fallback. Each result's raw Finnhub `type` is now passed through as
+  `finnhubType`.
+- `TransactionModal.tsx`: new `mapFinnhubTypeToAssetType()` — `"ETP"`/
+  `"ETF"` → `asset_type = 'etf'`, anything else (including the
+  verified-lookup fallback, which has no type at all) → `'stock'`.
+  Replaces the previous hardcoded `setNewAssetType("stock")` for every
+  Finnhub result, which is what miscategorized SCHD in the first place.
+- The "Asset type" dropdown is now shown and editable in Search mode too
+  (previously hidden entirely there, hardcoded) — a wrong Finnhub
+  classification (or this mapping) can always be corrected by hand.
+  Still hidden for an actual crypto pick, where the type is exclusive.
+- **Bug found and fixed along the way**: `/api/refresh-stock-prices`
+  filtered its query by `asset_type = 'stock'` on top of the real
+  `price_source`-based eligibility check — harmless while every
+  Finnhub-created asset was hardcoded `'stock'`, but would have silently
+  excluded any real `asset_type = 'etf'` row from auto-fetch. Fixed to
+  filter on `price_source = 'finnhub'` directly.
+- See DECISIONS.md D155.
+
+## 2026-07-17 — Replaced market/coingecko_id-as-eligibility-flag with a dedicated assets.price_source column
+- Reverted the previous entry's fix in full (the `UNKNOWN_MARKET_PLACEHOLDER`
+  constant, `selectSearchResult()`'s market pre-set, `EditAssetModal.tsx`'s
+  "Exchange/Market" field, the never-applied backfill migration — deleted,
+  not kept unused) in favor of a deeper fix: `assets.price_source`
+  (`migrations/0015_add_price_source.sql`, nullable text —
+  `null`/`'finnhub'`/`'coingecko'`) as the one explicit auto-fetch
+  eligibility signal, replacing the `market`/`coingecko_id` reuse pattern
+  entirely rather than patching just the `market` half of it.
+- `isForeignStock()` (`src/lib/finnhub.ts`) and `hasAutoFetch()`
+  (`src/lib/coingecko.ts`) now both read `price_source` directly.
+  `TransactionModal.tsx` sets it explicitly per creation path: `'finnhub'`
+  for any Finnhub search/fallback result, `'coingecko'` for any CoinGecko
+  search result, `null` (untouched) for manual entry.
+- `/api/refresh-crypto-prices` and `/api/refresh-stock-prices` filter on
+  `price_source` directly now; the crypto route also reports a distinct
+  skip reason if `price_source = 'coingecko'` but `coingecko_id` is
+  somehow still null (a new possible inconsistency now that
+  `price_source` can be set independently via the UI below).
+- `EditAssetModal.tsx`: new "Auto-fetch source" dropdown
+  (Manual/Finnhub/CoinGecko) — a general escape hatch for any asset stuck
+  without the right `price_source`, not just stocks.
+- `migrations/0015_add_price_source.sql` (not applied): adds the column,
+  backfills the two unambiguous existing cases automatically, and lists
+  every ambiguous `asset_type = 'stock' AND market IS NULL` row (the SCHD
+  shape) read-only for manual, one-by-one review — no reliable field
+  exists to auto-classify those. See DECISIONS.md D154 (supersedes D153,
+  D95, D20 in part) and GOTCHAS.md #11.
+
+## 2026-07-17 — Fix: ETFs like SCHD could fall into a dead end with no auto-fetch and no manual-entry option
+- `TransactionModal.tsx`'s `selectSearchResult()`: a stock/ETF created
+  via Finnhub search (real result or the "verified via direct lookup"
+  fallback) now always gets a non-null `assets.market` — the real
+  exchange if Finnhub's `/stock/profile2` returns one, otherwise the new
+  `UNKNOWN_MARKET_PLACEHOLDER` (`"UNKNOWN_EXCHANGE"`,
+  `src/lib/finnhub.ts`). Fixes ETFs whose profile lookup comes back
+  empty (SCHD, SPY, ...) — previously left `market IS NULL`, which
+  `isForeignStock()` reads as "not Finnhub-eligible," silently excluding
+  the asset from both auto-fetch and the Prices page's manual-entry
+  list at once.
+- `isForeignStock()` itself is unchanged — fixed at the asset-creation
+  call site instead, so manually-typed `asset_type = 'stock'` assets
+  keep their existing (correct) behavior. See DECISIONS.md D153.
+- `EditAssetModal.tsx`: new "Exchange/Market" field (stock only) to fix
+  this by hand in the future, same pattern as the existing "CoinGecko
+  ID" field for crypto.
+- `migrations/0015_backfill_stock_market_placeholder.sql` (not applied):
+  one-off data backfill for rows already stuck with `market IS NULL`
+  (e.g. the existing SCHD row) — read-only preview `SELECT` first, then
+  the `UPDATE`. See GOTCHAS.md #11.
+
+## 2026-07-17 — Fix: transaction quantity/price/fee fields blocked values with more than 6 decimal places
+- Changed `step="0.000001"` (Quantity, Price) and `step="0.01"` (Fee) to
+  `step="any"` on every quantity/price/fee input in
+  `TransactionModal.tsx` (single + batch) and `HistoryModal.tsx`'s
+  transaction-edit form — a finite `step` is a hard decimal-precision
+  ceiling on native `<input type="number">`, not just a spinner
+  increment, so a fractional-share quantity with 7+ decimals (common
+  for foreign-broker DCA/dividend reinvestment) was silently rejected
+  by the browser before this app's own code ever ran.
+- Checked `EditAssetModal.tsx` (no numeric fields) and `/prices` (its
+  price input is `type="text" inputMode="decimal"`, not
+  `type="number"`, so unaffected) — no other fix needed there.
+- Left `HistoryModal.tsx`'s Dividend Amount/Tax fields at `step="0.01"`
+  — currency amounts, not share quantities; the bug's trigger doesn't
+  apply. See GOTCHAS.md #10.
+
 ## 2026-07-17 — Removed the "Save today's value" manual button
 - `holdings/page.tsx`: removed the button, `handleSaveSnapshot()`, and
   the `savingSnapshot` loading state. `upsertPortfolioSnapshot()` now

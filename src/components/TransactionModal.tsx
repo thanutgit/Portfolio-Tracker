@@ -32,8 +32,33 @@ const LABEL_CLASS = "mb-1 block text-xs font-medium text-gray-700 dark:text-gray
 // ENTRIES) — so each result carries which one it came from and only the
 // fields that source can actually provide.
 type SearchResult =
-  | { type: "stock"; symbol: string; description: string; verified?: boolean }
+  | {
+      type: "stock";
+      symbol: string;
+      description: string;
+      verified?: boolean;
+      // Finnhub's own classification ("Common Stock", "ETP", ...) — named
+      // distinctly from this union's own `type` discriminant to avoid
+      // confusing the two. Absent for the "verified via direct lookup"
+      // fallback, which has no /search result to read it from.
+      finnhubType?: string;
+    }
   | { type: "crypto"; symbol: string; name: string; coingeckoId: string };
+
+// Finnhub's /search "type" ("Common Stock", "ETP", ...) maps to this
+// app's asset_type — used both to auto-classify on create
+// (selectSearchResult below) and to label ETF results in the dropdown
+// before picking. Unknown/absent types (including the "verified via
+// direct lookup" fallback, which has no /search result to read a type
+// from at all) fall back to 'stock' — the safer default, since 'stock'
+// and 'etf' behave identically everywhere else in the app (price_source,
+// not asset_type, drives auto-fetch eligibility — see DECISIONS.md
+// D154), so a wrong guess here only affects the label, never any real
+// behavior.
+function mapFinnhubTypeToAssetType(finnhubType: string | undefined): string {
+  if (finnhubType === "ETP" || finnhubType === "ETF") return "etf";
+  return "stock";
+}
 
 function TrashIcon() {
   return (
@@ -216,6 +241,10 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
   const [newCountry, setNewCountry] = useState("");
   const [newMarket, setNewMarket] = useState<string | null>(null);
   const [newCoingeckoId, setNewCoingeckoId] = useState<string | null>(null);
+  // Which auto-fetch mechanism this asset uses (migrations/0015,
+  // DECISIONS.md D154) — set explicitly per creation path below, not
+  // derived from newMarket/newCoingeckoId.
+  const [newPriceSource, setNewPriceSource] = useState<string | null>(null);
   const [newTaxBucket, setNewTaxBucket] = useState("normal");
   const [creatingAsset, setCreatingAsset] = useState(false);
   const [newAssetError, setNewAssetError] = useState<string | null>(null);
@@ -238,7 +267,7 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
       const { data, error } = await supabase
         .from("assets")
         .select(
-          "id, symbol, name, asset_type, currency, sector, country, tax_bucket, market, coingecko_id"
+          "id, symbol, name, asset_type, currency, sector, country, tax_bucket, market, coingecko_id, price_source"
         )
         .order("symbol");
       if (error) {
@@ -285,6 +314,9 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
     setNewCountry("");
     setNewMarket(null);
     setNewCoingeckoId(null);
+    // Manual entry until a search branch below sets it otherwise — the
+    // default "manual entry path" mode this form opens into.
+    setNewPriceSource(null);
     setNewTaxBucket("normal");
     setNewAssetError(null);
     setNewAssetMode("manual");
@@ -327,7 +359,12 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
           errors.push(stockJson.error ?? "Stock search failed.");
         } else {
           stockResults = (stockJson.results ?? []).map(
-            (r: { symbol: string; description: string; verified?: boolean }) => ({
+            (r: {
+              symbol: string;
+              description: string;
+              verified?: boolean;
+              finnhubType?: string;
+            }) => ({
               type: "stock" as const,
               ...r,
             })
@@ -387,6 +424,11 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
       setNewCountry("Global");
       setNewCurrency("THB");
       setNewCoingeckoId(result.coingeckoId);
+      // Set unconditionally, immediately — reaching this branch already
+      // means CoinGecko confirmed this coin (via /search), independent of
+      // whether the profile fetch below succeeds (unlike Finnhub's market,
+      // this never depended on a secondary lookup — see DECISIONS.md D154).
+      setNewPriceSource("coingecko");
       try {
         const res = await fetch(
           `/api/coingecko-profile?id=${encodeURIComponent(result.coingeckoId)}`
@@ -405,7 +447,21 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
     // that description is a UI label, not data, so leave Name blank for
     // manual entry instead of writing the label into it.
     setNewName(result.verified ? "" : result.description);
-    setNewAssetType("stock");
+    // Auto-classified from Finnhub's own "type" field (mapFinnhubTypeToAssetType
+    // above) instead of hardcoding 'stock' for every result — previously
+    // miscategorized real ETFs (e.g. SCHD) as 'stock'. Still a normal,
+    // editable dropdown afterward (shown in Search mode now too, not just
+    // Manual — see the JSX below) in case Finnhub's classification (or this
+    // mapping) is ever wrong.
+    setNewAssetType(mapFinnhubTypeToAssetType(result.finnhubType));
+    // Set unconditionally, immediately — reaching this branch already
+    // means Finnhub confirmed this symbol (via /search or the
+    // verified-lookup fallback), regardless of whether the profile fetch
+    // below succeeds, fails, or comes back empty (the common ETF case —
+    // see DECISIONS.md D154). Unlike Option B's earlier attempt at this
+    // fix, this doesn't depend on `market` at all, so there's no
+    // "placeholder vs. real value" distinction to manage here.
+    setNewPriceSource("finnhub");
     try {
       const res = await fetch(`/api/finnhub-profile?symbol=${encodeURIComponent(result.symbol)}`);
       const json = await res.json();
@@ -441,6 +497,7 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
       tax_bucket: newTaxBucket,
       market: newMarket,
       coingecko_id: newCoingeckoId,
+      price_source: newPriceSource,
     });
     if (error || !data) {
       setNewAssetError(error ?? "Failed to create asset.");
@@ -639,6 +696,20 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
   // DECISIONS.md D136-D140.
   const newAssetCurrencyMismatch = newCurrency !== baseCurrency;
 
+  // Asset type is always editable in Manual mode (unchanged). In Search
+  // mode it used to be hidden entirely and hardcoded to 'stock' — now
+  // shown too, so Finnhub's auto-classification (stock vs. etf, see
+  // mapFinnhubTypeToAssetType above) can be corrected by hand if it's
+  // ever wrong. Hidden only for an actual crypto pick (`newCoingeckoId`
+  // is set only by the crypto branch of selectSearchResult) — crypto's
+  // type is exclusive and tightly coupled to other auto-filled fields
+  // (Country/Currency), not something to second-guess here. Checking
+  // `newCoingeckoId` rather than `newAssetType === "crypto"` avoids a
+  // trap in Manual mode: if visibility depended on the live type value,
+  // picking "crypto" from the dropdown would immediately hide the very
+  // dropdown needed to change it back.
+  const showAssetTypeField = newAssetMode === "manual" || newCoingeckoId === null;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm dark:bg-black/60"
@@ -800,7 +871,11 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
                                 >
                                   <span className="font-medium">{r.symbol}</span>{" "}
                                   <span className="text-gray-500 dark:text-gray-400">
-                                    {r.type === "crypto" ? `${r.name} — Crypto` : r.description}
+                                    {r.type === "crypto"
+                                      ? `${r.name} — Crypto`
+                                      : mapFinnhubTypeToAssetType(r.finnhubType) === "etf"
+                                        ? `${r.description} — ETF`
+                                        : r.description}
                                   </span>
                                 </button>
                               </li>
@@ -839,7 +914,7 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                      {newAssetMode === "manual" && (
+                      {showAssetTypeField && (
                         <div>
                           <label className={LABEL_CLASS}>Asset type</label>
                           <select
@@ -855,7 +930,7 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
                           </select>
                         </div>
                       )}
-                      <div className={newAssetMode === "search" ? "col-span-2" : ""}>
+                      <div className={showAssetTypeField ? "" : "col-span-2"}>
                         <label className={LABEL_CLASS}>Currency</label>
                         <select
                           value={newCurrency}
@@ -955,7 +1030,7 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
                     <label className={LABEL_CLASS}>Quantity</label>
                     <input
                       type="number"
-                      step="0.000001"
+                      step="any"
                       min="0"
                       value={row.quantity}
                       onChange={(e) => updateRow(row.id, { quantity: e.target.value })}
@@ -969,7 +1044,7 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
                     </label>
                     <input
                       type="number"
-                      step="0.000001"
+                      step="any"
                       min="0"
                       value={row.price}
                       onChange={(e) => updateRow(row.id, { price: e.target.value })}
@@ -981,7 +1056,7 @@ export function TransactionModal({ portfolioId, baseCurrency, onClose, onSaved }
                     <label className={LABEL_CLASS}>Fee</label>
                     <input
                       type="number"
-                      step="0.01"
+                      step="any"
                       min="0"
                       value={row.fee}
                       onChange={(e) => updateRow(row.id, { fee: e.target.value })}

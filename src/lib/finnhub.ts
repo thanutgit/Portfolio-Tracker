@@ -1,11 +1,13 @@
-// A "foreign stock" is eligible for Finnhub auto-fetch if it's a stock with
-// a real market/exchange set — reuses the existing `assets.market` column
-// (present since 0001_init.sql, but never actually populated by any form in
-// this app until this feature) rather than adding a new column. Assets
-// created through the old manual-entry path (Thai funds, or a hand-typed
-// foreign stock) leave `market` null, so they're correctly excluded — only
-// assets created via the Finnhub search flow (or otherwise given a real
-// market value) become auto-fetch-eligible. See DECISIONS.md.
-export function isForeignStock(asset: { asset_type: string; market: string | null }): boolean {
-  return asset.asset_type === "stock" && !!asset.market;
+// A "foreign stock" is eligible for Finnhub auto-fetch based on
+// `assets.price_source` (migrations/0015) — a dedicated column, set
+// directly at asset-creation time, not derived from whether `market`
+// happens to be non-null. `market` used to double as this eligibility
+// flag (D95), but Finnhub's /stock/profile2 returns an empty profile for
+// a lot of ETFs (SCHD, SPY, ...), which left `market` null for a real,
+// Finnhub-confirmed symbol and silently excluded it from both auto-fetch
+// and the Prices page's manual-entry list at once — see GOTCHAS.md #11
+// and DECISIONS.md D154. `market` still gets set when Finnhub returns a
+// real exchange (purely informational now), but is never read here.
+export function isForeignStock(asset: { price_source: string | null }): boolean {
+  return asset.price_source === "finnhub";
 }

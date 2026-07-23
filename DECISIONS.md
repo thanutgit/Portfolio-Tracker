@@ -1374,3 +1374,285 @@ to see or force-retry a stuck snapshot short of reloading the page
 tradeoff of the removal, not an oversight — flagging it explicitly in
 case a future silent-failure pattern turns out to matter enough to
 revisit.
+
+## D153 — Fix the `isForeignStock()` dead end at asset-creation time, not in the predicate (Option B) — SUPERSEDED by D154
+
+**Superseded by D154, entirely reverted.** Option B (below) shipped, but
+before it was ever committed the user asked for a deeper fix instead:
+one dedicated `assets.price_source` column, replacing *both*
+`isForeignStock()`'s `market` reuse (D95) and `hasAutoFetch()`'s
+`coingecko_id` reuse (D20) as the auto-fetch-eligibility signal, rather
+than patching just the stock/`market` half of the problem. Reasoning:
+Option B fixed the specific ETF-empty-profile symptom, but left the
+underlying pattern in place — an eligibility flag borrowed from a field
+whose real job is something else (a profile detail, a foreign-API
+reference id), which is exactly what let this class of bug happen in
+the first place and could recur the same way for crypto (`coingecko_id`
+theoretically has the same "confirmed via search, but a required field
+came back empty" shape, even though no real case has hit it yet). All
+Option B code (the `UNKNOWN_MARKET_PLACEHOLDER` constant, the
+`selectSearchResult()` pre-set, the `market: market.trim() || null` in
+`EditAssetModal.tsx`, its "Exchange/Market" field) was reverted; the
+never-applied `migrations/0015_backfill_stock_market_placeholder.sql`
+was deleted outright rather than kept unused. See D154 for the actual
+fix. Left in place below as a historical record of the reasoning that
+was tried first, per this file's append-only convention.
+
+**The bug.** `isForeignStock()` (`asset_type === 'stock' && !!market`)
+gates both Finnhub auto-fetch eligibility (`/api/refresh-stock-prices`)
+and the Prices page's "already auto-fetched, don't ask for a manual
+price" exclusion — one shared predicate, two call sites. Finnhub's
+`/stock/profile2` returns `{}` (no `exchange`) for a lot of ETFs on the
+free tier (confirmed: SCHD, SPY — already noted in an existing code
+comment before this fix). A stock/ETF created via Finnhub search (real
+`/search` result or the "verified via direct lookup" fallback) that hit
+this empty-profile case ended up with `market IS NULL` despite being a
+real, Finnhub-confirmed symbol — indistinguishable from "never came
+through Finnhub at all" to `isForeignStock()`. Result: excluded from
+*both* auto-fetch and the manual-entry picker simultaneously — a genuine
+dead end, not a cosmetic duplicate-UI issue, since nothing in the app
+could ever get that asset a price through either path. Compounding it:
+there was no UI anywhere to view or edit `assets.market`, so an affected
+row had no fix short of raw SQL.
+
+**Why Option B (fix at creation, not the predicate) over Option A (drop
+the `market` check entirely).** `isForeignStock()`'s `market` check is
+deliberately what distinguishes a Finnhub-confirmed stock from a
+manually-typed `asset_type = 'stock'` asset (D95) — e.g. a Thai stock
+symbol Finnhub doesn't recognize, entered via "Manual entry" rather than
+search. Dropping the check to just `asset_type === 'stock'` would fix
+the ETF case but silently break that distinction: a hand-typed symbol
+Finnhub can't quote would flip to "assumed auto-fetch," get silently
+`skipped` by `/api/refresh-stock-prices` (no error, just no price), and
+simultaneously disappear from `/prices`' manual list — trading one dead
+end for a different one. Fixing at the point where an asset is *known*
+to have come through Finnhub (the search/fallback creation path)
+preserves the distinction with no regression risk for manually-entered
+stocks, at the cost of touching the creation flow instead of one
+predicate line.
+
+**Why a placeholder string, not silently reusing a real-looking value
+like `"US"`.** `UNKNOWN_MARKET_PLACEHOLDER = "UNKNOWN_EXCHANGE"`
+(`src/lib/finnhub.ts`) is deliberately not a plausible real exchange
+code. `market` is now user-visible (EditAssetModal's new "Exchange/
+Market" field, see below) — writing `"US"` when the real exchange is
+unknown would look like verified listing data and could mislead a user
+editing the asset later, or any future feature that reads `market` for
+display (there isn't one today, but the column would then already carry
+fabricated-looking values). `"UNKNOWN_EXCHANGE"` is honest about what
+happened (Finnhub confirmed the symbol but didn't return which exchange)
+while still being non-null, satisfying `isForeignStock()`'s only actual
+requirement. Same "disclose, don't guess" precedent as D130 (FX-
+unavailable holdings) and `computeRealizedGain()`'s oversell handling.
+
+**Set unconditionally, then overwritten if real data arrives** — not
+"set only if the profile call fails." `setNewMarket(UNKNOWN_MARKET_
+PLACEHOLDER)` runs immediately on entering the stock branch of
+`selectSearchResult()`, before the `/api/finnhub-profile` fetch, then
+gets overwritten with `json.market` if that call succeeds and actually
+returns an `exchange`. This covers all three failure shapes uniformly
+(profile call throws, returns non-OK, or returns `200 {}`) with one
+line, rather than needing matching fallback logic in the `catch` block
+and the empty-response branch separately.
+
+**Existing rows need a data migration, not just the code fix.** The code
+fix only prevents *new* affected rows — SCHD (and anything else that
+already landed with `market IS NULL`) needs a one-off backfill:
+`migrations/0015_backfill_stock_market_placeholder.sql` (not applied —
+handed over as SQL per CLAUDE.md, not run directly). Includes a
+read-only `SELECT` first to show exactly which rows are affected before
+the `UPDATE` runs, same pattern as 0012's preview-before-apply.
+
+**`EditAssetModal.tsx` gets a new "Exchange/Market" field (stock only),
+mirroring the existing "CoinGecko ID" field for crypto** — lets a
+placeholder be replaced with the real exchange by hand, or backfills an
+older/manually-entered stock, without needing SQL for every future
+occurrence of this same gap. Update payload only includes `market` when
+`asset_type === "stock"`, so editing a non-stock asset never touches
+(or clobbers) whatever `market` value happens to be sitting on that row.
+
+## D154 — One explicit `assets.price_source` column replaces reusing `market`/`coingecko_id` as the auto-fetch eligibility flag (supersedes D153, D95, D20 in part)
+
+**Why go further than D153's fix, right after implementing it.** D153
+(Option B) fixed the specific ETF symptom — SCHD's empty Finnhub profile
+leaving `market` null — by guaranteeing `market` is always non-null once
+an asset is confirmed via Finnhub search. That worked, but left the
+underlying pattern in place: an eligibility flag borrowed from a field
+whose real job is something else (an exchange code for stocks, a
+foreign-API reference id for crypto). The same failure shape could in
+principle recur for crypto — `coingecko_id` is set immediately and
+unconditionally today (no secondary profile-dependent step the way
+`market` had), so no real case has hit it, but "no real case yet" isn't
+the same guarantee as "structurally can't happen." Rather than defend
+two separately-reused fields against this class of bug indefinitely, one
+dedicated column removes the ambiguity for both at once: `null` always
+and only means "manual," `'finnhub'`/`'coingecko'` always and only mean
+"this specific mechanism confirmed it," independent of what any external
+API's profile/exchange lookup returns afterward.
+
+**D153 fully reverted, not layered on top.** Keeping both the `market`
+placeholder logic and the new `price_source` column would leave two
+partially-overlapping signals for the same question — a worse state than
+either alone, and confusing for anyone reading the code later ("which one
+is authoritative?"). `UNKNOWN_MARKET_PLACEHOLDER`, the `selectSearchResult()`
+pre-set, `EditAssetModal.tsx`'s "Exchange/Market" field, and the
+never-applied `migrations/0015_backfill_stock_market_placeholder.sql`
+(deleted, not kept unused) were all removed before starting this column.
+`market` goes back to being purely informational — it may still end up
+null on a `price_source = 'finnhub'` asset if Finnhub's profile comes back
+empty, and that's fine now, since nothing reads it as an eligibility
+signal anymore.
+
+**Column name deliberately close to `prices.source`, despite the
+confusion risk.** `assets.price_source` (this column: which mechanism an
+*asset* is eligible for) and `prices.source` (`migrations/0011`: which
+mechanism produced one price *row* — `'manual'`/`'csv'`/`'api'`/
+`'finnhub'`) are genuinely different questions on different tables. The
+name was specified directly rather than chosen to avoid the similarity;
+mitigated with an explicit disambiguating comment at both the migration
+file and the ARCHITECTURE.md section, rather than by picking a more
+distinct but less descriptive name.
+
+**Text column with a `check` constraint, not a Postgres enum type** —
+same style as `asset_type`/`tax_bucket` in `0001_init.sql`: easier to add
+a third auto-fetch source later (a schema-level `ALTER TABLE ... ADD
+CONSTRAINT`, not a `ALTER TYPE`) if one is ever needed.
+
+**Migration backfills only the unambiguous cases automatically; the
+SCHD-shaped ambiguous case is a manual, one-by-one decision, not a
+heuristic guess.** Asked directly whether some other stored field (e.g.
+`currency`) could reliably distinguish "hit the ETF empty-profile bug"
+from "genuinely hand-typed via Manual Entry" for existing `asset_type =
+'stock' AND market IS NULL` rows — it can't: a Finnhub-created row's
+`currency` may never have been corrected from whatever the portfolio's
+default was if the profile lookup came back empty, and `asset_type =
+'stock'` alone doesn't distinguish the two paths either (manual entry
+can produce it too — the "hand-typed foreign stock" case predates this
+feature). Rather than pick a heuristic that would be wrong some
+unknowable fraction of the time, `migrations/0015_add_price_source.sql`'s
+STEP 3 is a read-only `SELECT` listing every such row for the user to
+decide individually, with STEP 4 as a fill-in-the-symbols template for
+whichever ones they confirm.
+
+**Existing routes/predicates updated to read `price_source` directly,
+not layered through a translation.** `isForeignStock()` and
+`hasAutoFetch()` now take `{ price_source }` instead of `{ asset_type,
+market }`/`{ coingecko_id }` — a breaking signature change, deliberately,
+rather than keeping the old shape and mapping internally, since every
+call site already has `price_source` available from the same `assets`
+query and there's no remaining reason to accept the old fields at all.
+`/api/refresh-crypto-prices` filters on `price_source === 'coingecko'`
+directly (it never called `hasAutoFetch()` in the first place — it had
+its own inline `coingecko_id` check) and separately validates
+`coingecko_id` is actually present, reporting a distinct skip reason if
+`price_source`/`coingecko_id` are ever inconsistent (possible now that
+`price_source` can be set independently via `EditAssetModal`'s dropdown).
+`/api/refresh-stock-prices` already called the shared `isForeignStock()`,
+so it needed no logic change beyond selecting the new column.
+
+**Extended by D155**: `/api/refresh-stock-prices` itself still filtered
+its DB query by `asset_type = 'stock'`, on top of `isForeignStock()` —
+harmless while every Finnhub-created asset was hardcoded `'stock'`, but
+a real bug the moment `'etf'` became a real, reachable classification.
+See D155.
+
+## D155 — Auto-classify `asset_type` ('stock' vs. 'etf') from Finnhub's own search result type, instead of hardcoding 'stock'
+
+**The gap.** `TransactionModal.tsx` hardcoded `asset_type = "stock"` for
+every Finnhub search/fallback result, regardless of whether the real
+symbol was a common stock or an ETF — the direct cause of SCHD (a real
+ETF) landing as `asset_type = 'stock'` in the first place. Finnhub's
+`/search` already returns a `type` field per result (`"Common Stock"`,
+`"ETP"`, ...) that distinguishes these — previously discarded entirely,
+both by the server route's filter (`.filter((r) => r.type === "Common
+Stock")`, which silently dropped every ETF result from `/search`
+altogether) and by the client never reading it.
+
+**Two real bugs found and fixed together, not just the labeling gap.**
+Fixing the classification surfaced a second, more serious bug it would
+otherwise have triggered: `/api/refresh-stock-prices` queried
+`.eq("asset_type", "stock")` *in addition to* `isForeignStock()`'s
+`price_source` check. Once a real asset could legitimately have
+`asset_type = 'etf'` with `price_source = 'finnhub'`, that query would
+have silently excluded it from auto-fetch entirely — the exact same
+"eligible in theory, invisible in practice" shape as GOTCHAS.md #11,
+just at the query layer instead of the predicate layer. Fixed by
+filtering the query on `price_source = 'finnhub'` directly, matching
+what `isForeignStock()` actually checks, and dropping the now-redundant
+`asset_type` filter and selected column entirely.
+
+**Unknown/missing Finnhub type falls back to `'stock'`, not to erroring
+or leaving it unset.** Two cases hit this: a `type` value Finnhub
+returns that isn't `"Common Stock"`/`"ETP"`/`"ETF"` (filtered out
+server-side already, so shouldn't reach the client, but defended anyway),
+and the "verified via direct lookup" fallback, which has no `/search`
+result to read a type from at all. `'stock'` is the safe default
+specifically *because* of D154: `asset_type` no longer drives auto-fetch
+eligibility (`price_source` does), so a wrong guess here only produces a
+wrong label, never a functional difference in whether the asset prices
+itself automatically.
+
+**Search-mode "Asset type" field un-hidden, not just auto-filled.** It
+was previously rendered only in Manual entry mode — entirely absent from
+the DOM in Search mode, hardcoded and un-overridable. Now shown in both
+modes, so a wrong auto-classification (Finnhub's or this mapping's) can
+always be corrected by hand. Visibility is keyed off `newCoingeckoId ===
+null` rather than `newAssetType !== "crypto"` — the latter would trap a
+user who manually selects "crypto" from the dropdown in Manual mode: the
+field would immediately hide itself the moment its own value changed to
+the thing being hidden for, with no way to change it back.
+
+**`/api/finnhub-search`'s filter expanded, not just the client-side
+mapping.** Allowing `"ETP"`/`"ETF"` through the route's own filter
+(previously `"Common Stock"` only) means a real ETF like SCHD now
+usually appears as an actual `/search` result — with its real
+description/name — rather than only ever reaching the "verified via
+direct lookup" fallback (raw `/quote` confirmation, no real metadata).
+The fallback path still exists and still matters for tickers Finnhub's
+search index genuinely doesn't have under the queried text, regardless
+of instrument type.
+
+## D156 — `/api/finnhub-profile` never returns an error status for anything Finnhub-side; only this app's own request problems stay real errors
+
+**The bug this surfaced.** Widening D155's `/search` filter (to catch
+real ETFs) also started surfacing regional cross-listings of the same
+instrument — e.g. `SCHD.MX`, a Mexican-exchange listing of SCHD.
+`/api/finnhub-profile?symbol=SCHD.MX` returned a 502, while an ordinary
+ETF with an empty Finnhub profile (`200 {}`) already degraded
+gracefully to an all-null response. Both are the same situation — "no
+usable profile data for this symbol" — reached two different ways
+(a 200 with an empty body vs. Finnhub responding with a genuine non-2xx
+status), and only one of them was handled gracefully. See GOTCHAS.md
+#12 for the full root-cause writeup, and confirmed against the real
+Finnhub API: `SCHD.MX` now returns `200` with every field `null`
+(previously `502`); `AAPL` is unaffected.
+
+**Collapse to one graceful outcome, not preserve the status-code
+distinction.** Considered keeping 429 (rate limit) as a distinct error
+status, since it's a genuinely different condition from "this symbol has
+no data." Decided against it: `TransactionModal.tsx`'s caller already
+treats any non-`res.ok` response identically to a same-shape "no data"
+response — it does nothing observable to the user in either case
+(`if (res.ok) { ... }`, no `else`, no error surfaced). Preserving a
+distinction the caller can't act on just keeps a second code path alive
+for no behavioral payoff, and was the reason the SCHD.MX case regressed
+in the first place — every extra distinguishable outcome is another
+thing that can drift out of sync with what actually happens client-side.
+If a future caller needs to distinguish "rate limited, try again" from
+"this symbol has no profile," that's a reason to add it back
+deliberately then, not a reason to keep unused branching now.
+
+**What still stays a real error.** Only two cases: a missing
+`FINNHUB_API_KEY` (500) and a missing `symbol` query param (400) — both
+are this app's *own* request being malformed or misconfigured, not
+Finnhub saying anything about the requested symbol. That distinction
+(our bug vs. "Finnhub has nothing for this input") is the one that
+actually matters and is preserved.
+
+**Side effect, not a separate change: the "Sector/Country not
+available" amber notice now correctly fires for this case too.**
+`TransactionModal.tsx`'s `setProfileMissingSectorCountry(true)` line
+sits inside the `if (res.ok)` block — previously unreachable on a 502
+(fields silently stayed blank with no explanation), now reachable since
+the route always returns `200`. No client-side code changed; this
+improvement fell out of the server-side fix automatically.

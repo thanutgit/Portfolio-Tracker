@@ -11,7 +11,7 @@ interface SkipReason {
 export async function POST() {
   const { data: assets, error: assetsError } = await supabase
     .from("assets")
-    .select("id, symbol, coingecko_id")
+    .select("id, symbol, coingecko_id, price_source")
     .eq("asset_type", "crypto");
 
   if (assetsError) {
@@ -22,16 +22,23 @@ export async function POST() {
   }
 
   const skipped: SkipReason[] = [];
-  // Dynamic per-asset lookup (migrations/0013's `coingecko_id` column),
-  // not a hardcoded symbol list — supersedes D20, since crypto assets can
-  // now be created for any CoinGecko coin via "Search asset", not just
-  // BTC/ETH. An asset created before this column existed (or created via
-  // manual entry, which never sets it) is reported as skipped, same as
-  // an unrecognized symbol was before.
+  // Eligibility is `price_source === 'coingecko'` (migrations/0015,
+  // DECISIONS.md D154) — a dedicated column set at asset-creation time,
+  // not derived from `coingecko_id` (supersedes the coingecko_id-as-flag
+  // approach, which itself superseded D20's original hardcoded
+  // { BTC, ETH } map). `coingecko_id` is still required to actually call
+  // the API — checked separately below, since an inconsistent row
+  // (price_source set without a coingecko_id, possible via
+  // EditAssetModal's manual price_source dropdown) is a different
+  // failure than "not eligible at all" and deserves its own reason.
   const priceable = assets.filter(
     (a): a is typeof a & { coingecko_id: string } => {
+      if (a.price_source !== "coingecko") return false;
       if (a.coingecko_id) return true;
-      skipped.push({ symbol: a.symbol, reason: "No coingecko_id set for this asset" });
+      skipped.push({
+        symbol: a.symbol,
+        reason: "price_source is 'coingecko' but no coingecko_id is set for this asset",
+      });
       return false;
     }
   );

@@ -4,6 +4,16 @@ import type { Asset } from "@/lib/types";
 export const ASSET_TYPES = ["stock", "etf", "fund", "bond", "cash", "crypto"];
 export const CURRENCIES = ["THB", "USD", "EUR", "GBP", "JPY"];
 export const TAX_BUCKETS = ["normal", "RMF", "SSF", "ThaiESG"];
+// Manual escape hatch for EditAssetModal's "Auto-fetch source" dropdown
+// (migrations/0015, DECISIONS.md D154) — lets a stuck asset be
+// reassigned to the right auto-fetch mechanism (or back to manual)
+// without needing SQL. `""` maps to `null` (manual) on save, same
+// pattern as every other optional text field in this form.
+export const PRICE_SOURCES: { value: string; label: string }[] = [
+  { value: "", label: "Manual (no auto-fetch)" },
+  { value: "finnhub", label: "Finnhub (stock/ETF)" },
+  { value: "coingecko", label: "CoinGecko (crypto)" },
+];
 
 export interface NewAssetInput {
   symbol: string;
@@ -21,6 +31,12 @@ export interface NewAssetInput {
   // of TransactionModal's "Search asset" flow; manual entry (and the
   // stock side of search) never collects this, so it stays null there.
   coingecko_id?: string | null;
+  // Which auto-fetch mechanism this asset uses — set explicitly by the
+  // caller now (migrations/0015, DECISIONS.md D154), not derived from
+  // market/coingecko_id: 'finnhub' for the Finnhub search/fallback path,
+  // 'coingecko' for the CoinGecko search path, null (the default) for
+  // manual entry.
+  price_source?: string | null;
 }
 
 // The schema's unique constraint is on (symbol, market) — forms in this app
@@ -74,8 +90,11 @@ export async function createAsset(
       tax_bucket: input.tax_bucket,
       market: input.market?.trim() || null,
       coingecko_id: input.coingecko_id?.trim() || null,
+      price_source: input.price_source ?? null,
     })
-    .select("id, symbol, name, asset_type, currency, sector, country, tax_bucket, market, coingecko_id")
+    .select(
+      "id, symbol, name, asset_type, currency, sector, country, tax_bucket, market, coingecko_id, price_source"
+    )
     .single();
   if (error) {
     if (error.code === "23505" || /duplicate key/i.test(error.message)) {

@@ -248,3 +248,136 @@ data-loss bug for "everything, no filter applied yet." Give the
 unfiltered/empty-query case its own explicit ceiling, high enough that
 it's not really a limit at the app's actual data scale, rather than
 reusing whatever cap the filtered case uses.
+
+## #10 — A `step="0.000001"` on a number input silently blocks any value with more decimals than that
+**What happened:** Typing `2.2403415` (7 decimal places — a real
+fractional-share quantity from a foreign broker's DCA/dividend
+reinvestment) into the Quantity field in "+ Add transaction" was
+rejected by the browser with "Please enter a valid value," before the
+app's own `handleSubmit` (which calls `e.preventDefault()`) ever ran.
+
+**Root cause:** `<input type="number" step="0.000001">` sets the
+HTML5 step-mismatch constraint to exactly 6 decimal places — a value
+with 7+ decimals fails native browser constraint validation on submit,
+and the browser blocks the form (native validation UI, not this app's
+code) before any JS handler sees it. The `step="0.000001"` was chosen
+to *allow* fractional quantities in the first place, but any finite
+step value still draws a hard line at that many decimal places — it
+traded "blocks all decimals" (the `step="1"` default) for "blocks more
+than 6 decimals," not "blocks no decimals."
+
+**Fix:** changed `step="0.000001"` (Quantity, Price) and `step="0.01"`
+(Fee) to `step="any"` on every quantity/price/fee input in
+`TransactionModal.tsx` (single + batch) and `HistoryModal.tsx`'s
+transaction-edit form — `step="any"` explicitly disables step-mismatch
+validation, so any number of decimal places is accepted. Dividend
+Amount/Tax fields (also in `HistoryModal.tsx`) were deliberately left
+at `step="0.01"` — they're currency amounts, not share quantities, and
+the bug's real-world trigger (long-tail fractional shares) doesn't
+apply there.
+
+**Prevention:** on a native `<input type="number">`, any finite `step`
+value is a hard ceiling on decimal precision, not just a spinner
+increment — it applies to typed/pasted input too, not only the
+up/down arrows. For a field that can legitimately hold an unpredictable
+number of decimal places (fractional share quantities, prices from
+markets with sub-cent ticks), use `step="any"` rather than picking a
+number of decimals and hoping it's enough — the moment real data
+exceeds whatever was chosen, the browser silently blocks the value
+with no app-level error message to debug from.
+
+## #11 — A shared "is this eligible for auto-fetch" predicate silently excluded assets from BOTH auto-fetch and manual entry
+**What happened:** SCHD (an ETF added via Finnhub search's "verified via
+direct lookup" fallback, since Finnhub's `/search` doesn't index it)
+never got a price from either mechanism — not auto-fetched by
+`/api/refresh-stock-prices`, and not offered as a manual-entry option on
+`/prices` either, as if the app had simply forgotten it existed.
+
+**Root cause:** `isForeignStock()` (`src/lib/finnhub.ts`) — `asset_type
+=== 'stock' && !!market` — gates *both* Finnhub auto-fetch eligibility
+and the Prices page's "already handled automatically, don't ask for a
+manual price" exclusion. `market` is populated from Finnhub's
+`/stock/profile2` `exchange` field at asset-creation time, but that
+endpoint returns `{}` for a lot of ETFs on the free tier (already known
+from an earlier round — sector/country come back null the same way).
+So a real, Finnhub-confirmed ETF could end up with `market IS NULL`,
+which `isForeignStock()` reads identically to "never came through
+Finnhub at all" — falling into neither category instead of the intended
+one. There was also no UI anywhere to view or fix `assets.market`
+directly, so once a row landed this way, nothing in the app could ever
+correct it without raw SQL.
+
+**Fix (two attempts):** the first attempt (D153, "Option B") patched
+`market` specifically — always non-null once created via Finnhub search,
+real exchange or a placeholder — at the asset-creation call site rather
+than in `isForeignStock()`. That worked, but only fixed the `market`
+half of the underlying pattern (an eligibility flag borrowed from a
+field with a different real job); the same shape of bug was structurally
+still possible for crypto's `coingecko_id`, even with no real case
+having hit it yet. Fully reverted in favor of D154: one dedicated column,
+`assets.price_source` (`migrations/0015_add_price_source.sql`, nullable,
+`null`/`'finnhub'`/`'coingecko'`), set directly and unconditionally at
+asset-creation time — `isForeignStock()`/`hasAutoFetch()` now read that
+column and nothing else. `market`/`coingecko_id` keep their original
+columns and meaning, just stop being read as eligibility signals.
+`EditAssetModal.tsx` got an "Auto-fetch source" dropdown so this class of
+gap (any asset, not just stocks) can be fixed from the UI without SQL.
+Existing rows (SCHD included) get backfilled by migration where the old
+signal was unambiguous; the genuinely ambiguous SCHD-shaped cases are
+listed via a read-only query for manual, one-by-one review rather than a
+guess — see DECISIONS.md D154 for why no reliable auto-classification
+exists for those.
+
+**Prevention:** when one predicate function decides *two* different
+behaviors (here: "auto-fetch this" and "don't show a manual option for
+this"), a field that predicate depends on going unexpectedly null
+doesn't just disable one behavior — it can flip both at once into the
+worst combination ("neither"), and that combination is easy to miss
+precisely because each half looks individually correct (no error, no
+crash, just an asset that quietly never gets a price). When an external
+API's response can legitimately be incomplete for real, valid input
+(not just invalid input), don't let an internal eligibility flag inherit
+"missing" from that response directly — decide what "confirmed real,
+but details unknown" should mean for your own logic, explicitly, rather
+than propagating the API's null straight through.
+
+## #12 — Two equivalent "no data for this symbol" cases handled inconsistently: one gracefully, one as a 502
+**What happened:** `GET /api/finnhub-profile?symbol=SCHD.MX` (a
+Mexican-exchange cross-listing of SCHD, surfaced by `/search` once the
+ETP/ETF filter was widened — see DECISIONS.md D155) returned a 502
+"server error," instead of the same graceful all-null response an
+ordinary ETF with no profile data already got.
+
+**Root cause:** Finnhub's `/stock/profile2` returns 200 with an empty
+`{}` body for plenty of real, valid symbols it just has no fundamentals
+for on the free tier (the already-known ETF case — SCHD's primary US
+listing, SPY, etc.). But for some symbols — apparently including regional
+cross-listings like `SCHD.MX`, plausibly not covered by `/profile2` on
+the free tier at all — Finnhub responds with a genuine non-2xx status
+instead of an empty 200. The route's `if (!res.ok)` branch treated that
+as a hard error and returned its own 502/429 to the client, while the
+`200 {}` case fell through to a graceful all-null 200 response. Same
+underlying situation ("no profile data for this symbol"), two different
+outcomes depending on *how* Finnhub happened to signal it — not
+specific to `.MX`; any suffix/cross-listing could trigger the same
+non-2xx response and hit the identical bug.
+
+**Fix:** the route no longer returns any error status for a
+Finnhub-side failure of any kind — network error, timeout, non-2xx
+response, or a 2xx response whose body fails to parse as JSON all
+degrade to the exact same all-null 200 response as the `{}` case. Only
+two genuine errors remain, both about *this app's own* request being
+malformed, not about what Finnhub said: a missing `FINNHUB_API_KEY`
+(500, real misconfiguration) and a missing `symbol` query param (400,
+real caller bug). Verified against the real Finnhub API:
+`SCHD.MX` → `{"sector":null,"country":null,"currency":null,"market":null}`
+(previously 502); `AAPL` → real profile data, unaffected.
+
+**Prevention:** when a client already treats "request succeeded with no
+useful data" and "request failed" identically (here, `TransactionModal`'s
+`if (res.ok) { ... }` just does nothing either way, with no visible
+distinction to the user), don't let the server-side implementation still
+draw that distinction internally — it just means some inputs get gentler
+handling than others for no reason the caller can see or benefit from.
+Collapse to one graceful path unless something downstream would actually
+act differently on the distinction.

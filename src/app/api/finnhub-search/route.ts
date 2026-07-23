@@ -75,13 +75,21 @@ export async function GET(request: Request) {
   }
   const searchBody: { result?: FinnhubSearchResult[] } = await searchRes.json();
 
-  // Finnhub's search also returns ETPs, mutual funds, etc. — filtered down
-  // to "Common Stock" since this feature is scoped to foreign stocks
-  // specifically (asset_type is hardcoded to 'stock' at creation time).
+  // Scoped to stocks and ETFs — everything else Finnhub's search also
+  // returns (mutual funds, bonds, currency pairs, etc.) stays out of
+  // scope for this feature. Used to only allow "Common Stock" through,
+  // which silently dropped real ETFs (Finnhub labels them "ETP", e.g.
+  // SCHD) from search results entirely — they'd only ever surface via
+  // the "verified via direct lookup" /quote fallback below, with none of
+  // their real profile data. `type` is passed through as `finnhubType`
+  // so the client can auto-classify asset_type (stock vs. etf) instead
+  // of hardcoding 'stock' for every result — see TransactionModal.tsx's
+  // selectSearchResult() and DECISIONS.md.
+  const KNOWN_TYPES = new Set(["Common Stock", "ETP", "ETF"]);
   const results = (searchBody.result ?? [])
-    .filter((r) => r.type === "Common Stock")
+    .filter((r) => KNOWN_TYPES.has(r.type))
     .slice(0, 10)
-    .map((r) => ({ symbol: r.symbol, description: r.description }));
+    .map((r) => ({ symbol: r.symbol, description: r.description, finnhubType: r.type }));
 
   if (results.length > 0) {
     return NextResponse.json({ results });

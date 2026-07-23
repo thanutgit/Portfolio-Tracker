@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { ASSET_TYPES, CURRENCIES, TAX_BUCKETS, isSymbolTaken } from "@/lib/assets";
+import { ASSET_TYPES, CURRENCIES, PRICE_SOURCES, TAX_BUCKETS, isSymbolTaken } from "@/lib/assets";
 import { useConfirm } from "@/lib/hooks/useConfirm";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import type { Asset } from "@/lib/types";
@@ -26,6 +26,7 @@ export function EditAssetModal({ asset, onClose, onSaved }: Props) {
   const [country, setCountry] = useState(asset.country ?? "");
   const [taxBucket, setTaxBucket] = useState(asset.tax_bucket);
   const [coingeckoId, setCoingeckoId] = useState(asset.coingecko_id ?? "");
+  const [priceSource, setPriceSource] = useState(asset.price_source ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { confirm, confirmState, handleConfirm, handleCancel } = useConfirm();
@@ -76,6 +77,7 @@ export function EditAssetModal({ asset, onClose, onSaved }: Props) {
         country: country.trim() || null,
         tax_bucket: taxBucket,
         coingecko_id: coingeckoId.trim() || null,
+        price_source: priceSource || null,
       })
       .eq("id", asset.id);
     if (error) {
@@ -215,6 +217,31 @@ export function EditAssetModal({ asset, onClose, onSaved }: Props) {
               </p>
             </div>
           )}
+
+          <div>
+            <label className={LABEL_CLASS}>Auto-fetch source</label>
+            <select
+              value={priceSource}
+              onChange={(e) => setPriceSource(e.target.value)}
+              className={`cursor-pointer ${INPUT_CLASS}`}
+            >
+              {PRICE_SOURCES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Which mechanism (if any) auto-refreshes this asset&apos;s
+              price — set automatically when created via &quot;Search
+              asset&quot;. Manual escape hatch for an asset stuck without
+              one (e.g. a Finnhub ETF whose profile lookup came back
+              empty) — pick &quot;Finnhub&quot; for a real stock/ETF
+              symbol Finnhub can quote, &quot;CoinGecko&quot; for a coin
+              with a valid CoinGecko ID set above, or leave it Manual to
+              price it yourself on the Prices page.
+            </p>
+          </div>
 
           <div>
             <label className={LABEL_CLASS}>Tax bucket</label>

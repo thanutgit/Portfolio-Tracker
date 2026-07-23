@@ -20,6 +20,7 @@ interface AssetLite {
   asset_type: string;
   market: string | null;
   coingecko_id: string | null;
+  price_source: string | null;
 }
 
 interface ParsedRow {
@@ -195,7 +196,7 @@ export default function PricesPage() {
       setLoadingAssets(true);
       const { data, error } = await supabase
         .from("assets")
-        .select("id, symbol, name, currency, asset_type, market, coingecko_id");
+        .select("id, symbol, name, currency, asset_type, market, coingecko_id, price_source");
       if (error) {
         setError(error.message);
       } else {
@@ -212,11 +213,13 @@ export default function PricesPage() {
     setSaveMessage(null);
   }
 
-  // Assets with their own auto-refresh — crypto via CoinGecko (D79, now
-  // driven by the per-asset coingecko_id column rather than a hardcoded
-  // symbol list) and foreign stocks via Finnhub — are left out of the
-  // picker entirely, since a manual price here would just be redundant
-  // with (and could conflict with) the automated one.
+  // Assets with their own auto-refresh — crypto via CoinGecko and foreign
+  // stocks via Finnhub, both driven by `price_source` (migrations/0015,
+  // DECISIONS.md D154) — are left out of the picker entirely, since a
+  // manual price here would just be redundant with (and could conflict
+  // with) the automated one. Equivalent to `price_source IS NULL` (only
+  // `null` means "no auto-fetch"), written as two named predicates for
+  // clarity at the call site.
   const selectableAssets = useMemo(
     () => assets.filter((a) => !hasAutoFetch(a) && !isForeignStock(a)),
     [assets]

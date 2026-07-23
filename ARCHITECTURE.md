@@ -391,20 +391,24 @@ saved."/"N transactions saved." accordingly.
 
 ## Crypto price refresh
 `POST /api/refresh-crypto-prices` (Next.js Route Handler, server-side) fetches
-THB prices from CoinGecko's free public API (no key) for every asset with
-`asset_type = 'crypto'` and a non-null `coingecko_id`, and inserts into
-`prices` with `source = 'api'`. Auto-triggered on the Holdings page (on mount
-and every 60s while it's open) — no manual button, no cron/background job.
-Which coin each asset maps to is per-asset, in the DB (`assets.coingecko_id`,
-migration `0013_add_coingecko_id.sql`), not a hardcoded symbol list —
-supersedes the original D20 approach (hardcoded when only BTC was held). Any
-`asset_type = 'crypto'` asset with a null `coingecko_id` (created via manual
-entry, or a pre-0013 asset not yet backfilled) is reported as skipped, not
-silently ignored — same "skipped: reason" shape used elsewhere. `hasAutoFetch()`
-in `src/lib/coingecko.ts` (used by the Prices page to exclude these assets from
-its manual-entry picker) now checks `coingecko_id != null` instead of a
-hardcoded map. Thai funds have no public price API and stay manual. See
-DECISIONS.md.
+THB prices from CoinGecko's free public API (no key) for every
+`asset_type = 'crypto'` asset with `price_source = 'coingecko'`
+(`migrations/0015`, DECISIONS.md D154), and inserts into `prices` with
+`source = 'api'`. Auto-triggered on the Holdings page (on mount and every
+60s while it's open) — no manual button, no cron/background job. Which
+coin each eligible asset maps to is per-asset, in the DB
+(`assets.coingecko_id`, migration `0013_add_coingecko_id.sql`), not a
+hardcoded symbol list — supersedes the original D20 approach (hardcoded
+when only BTC was held). An eligible asset whose `coingecko_id` is
+somehow still null (an inconsistent row — `price_source` and
+`coingecko_id` are two separate columns) is reported as skipped with its
+own distinct reason, same "skipped: reason" shape used elsewhere; an
+asset with `price_source` not `'coingecko'` at all (manual entry, or a
+pre-0015 row not yet backfilled) is filtered out before that check even
+runs. `hasAutoFetch()` in `src/lib/coingecko.ts` (used by the Prices page
+to exclude these assets from its manual-entry picker) checks
+`price_source === 'coingecko'`. Thai funds have no public price API and
+stay manual. See DECISIONS.md.
 
 New crypto assets (and the `coingecko_id` that makes them auto-refreshable)
 are found through the UI via `GET /api/coingecko-search?q=`, CoinGecko's own
@@ -419,30 +423,62 @@ crypto matches, fired in parallel, debounced ~400ms after the user stops
 typing. If one side errors, the other's results still show; the error text
 only appears if both come back empty.
 - `GET /api/finnhub-search?q=` — proxies Finnhub's `/search`, filtered to
-  `type === "Common Stock"` (Finnhub's search also returns ETPs/mutual
-  funds/etc., out of scope here) and capped to 10 results. `FINNHUB_API_KEY`
-  (plain env var, **not** `NEXT_PUBLIC_`) never reaches the client. Falls back
-  to a `/quote` lookup (fired in parallel, not sequentially) when `/search`
-  returns nothing for a ticker-shaped query, surfacing a "— verified via
-  direct lookup" result if `/quote` shows a live price.
+  `type` in `{"Common Stock", "ETP", "ETF"}` (Finnhub's search also returns
+  mutual funds/bonds/currency pairs/etc., out of scope here) and capped to
+  10 results, passing each result's raw Finnhub `type` through as
+  `finnhubType`. `FINNHUB_API_KEY` (plain env var, **not** `NEXT_PUBLIC_`)
+  never reaches the client. Falls back to a `/quote` lookup (fired in
+  parallel, not sequentially) when `/search` returns nothing for a
+  ticker-shaped query, surfacing a "— verified via direct lookup" result
+  (no `finnhubType`, since there's no `/search` match to read one from) if
+  `/quote` shows a live price. Previously filtered to `"Common Stock"`
+  only, which silently dropped real ETFs from `/search` results entirely
+  (they'd only ever surface via the `/quote` fallback, with none of their
+  real name/description) — see DECISIONS.md D155.
+- `mapFinnhubTypeToAssetType()` (`TransactionModal.tsx`) — `finnhubType`
+  `"ETP"`/`"ETF"` → `asset_type = 'etf'`, anything else (including no
+  `finnhubType` at all, the verified-lookup fallback case) → `'stock'`.
+  Auto-classifies on create instead of hardcoding `'stock'` for every
+  Finnhub result (the original cause of SCHD, an ETF, landing as
+  `asset_type = 'stock'`). A wrong guess only affects the label — since
+  D154, auto-fetch eligibility is driven entirely by `price_source`, not
+  `asset_type`, so `'stock'` vs. `'etf'` has no functional effect on
+  whether an asset auto-fetches. The Asset Type dropdown is shown and
+  editable in Search mode now too (previously hidden entirely there,
+  hardcoded), so a wrong classification — Finnhub's or this mapping's —
+  can always be corrected by hand before saving. See DECISIONS.md D155.
 - `GET /api/finnhub-profile?symbol=` — proxies `/stock/profile2`, called
   once, right after a stock search result is picked (not per keystroke), to
   auto-fill sector (`finnhubIndustry`), country, currency, and market
   (`exchange`). Every auto-filled field stays a normal, editable input
-  afterward. Finnhub returns `{}` (200 OK, not an error) for a symbol with no
-  profile data (also the norm for ETFs — Finnhub's free tier has no
-  ETF-specific fundamentals endpoints either) — an amber notice tells the
-  user to fill Sector/Country manually instead of leaving them silently
-  blank, rather than erroring.
+  afterward. Always returns `200` with every field defaulted to `null` for
+  anything Finnhub-side that didn't work — an empty `200 {}` body (the norm
+  for ETFs, whose fundamentals aren't on Finnhub's free tier), a genuine
+  non-2xx status (e.g. a regional cross-listing like `SCHD.MX`, which
+  `/search` can surface but `/profile2` won't return data for), a network
+  error, or an unparseable body all degrade to the same all-null response —
+  see GOTCHAS.md #12 and DECISIONS.md D156 for why a real 502 for the
+  cross-listing case was a bug, not correct behavior. Only a missing
+  `FINNHUB_API_KEY` (500) or a missing `symbol` param (400) are real errors
+  — both are about this app's own request, not what Finnhub said. An amber
+  notice tells the user to fill Sector/Country manually instead of leaving
+  them silently blank whenever both come back null, regardless of which of
+  the above caused it.
 - `POST /api/refresh-stock-prices` — mirrors `/api/refresh-crypto-prices`'s
   shape, but fetches `/quote` (no batch endpoint, unlike CoinGecko) for
-  every eligible held stock in parallel and inserts into `prices` with
+  every eligible stock/ETF in parallel and inserts into `prices` with
   `source = 'finnhub'`. Called **once per Holdings page visit** (on mount
   and on portfolio switch), not on a repeating interval like crypto's 60s
   poll — Finnhub's free tier is 300 calls/day (vs. CoinGecko's much
   higher limit), and unlike crypto, stocks aren't traded 24/7, so a
   repeating poll would burn the daily quota for no benefit. Silent
-  otherwise (no loading state, no banner), same as crypto.
+  otherwise (no loading state, no banner), same as crypto. Queries
+  `.eq("price_source", "finnhub")` directly, not `asset_type = 'stock'`
+  — querying by `asset_type` would silently exclude any `asset_type =
+  'etf'` row (see `mapFinnhubTypeToAssetType()` above) even though it's
+  just as eligible; `price_source` is the one thing that actually
+  determines eligibility (D154), so it's also the one thing this query
+  filters on. See DECISIONS.md D155.
 - `GET /api/coingecko-search?q=` — proxies CoinGecko's `/search` (no API
   key needed), sorted by `market_cap_rank` (nulls last) and capped to 10, so
   a real/liquid coin surfaces above low-cap namesake tokens. Not limited to
@@ -462,24 +498,59 @@ CoinGecko coin id in the new `assets.coingecko_id` column (migration 0013),
 which `/api/refresh-crypto-prices` then uses for auto price-refresh — see
 "Crypto price refresh" above.
 
-**Which assets are eligible** (`isForeignStock()` in `src/lib/finnhub.ts`):
-`asset_type === 'stock' && market` is truthy. This reuses the existing
-`assets.market` column — present since `0001_init.sql` ("SET, mai, NYSE,
-NASDAQ, null") but never actually populated by any form until this
-feature — rather than a hardcoded symbol lookup (crypto's original
-approach before migration 0013, which didn't scale to the thousands of
-possible stock tickers, and doesn't scale for crypto either once search
-isn't limited to a couple of hardcoded coins). Assets created via the old manual-entry path
-(Thai funds, or a hand-typed foreign stock) leave `market` null and are
-correctly excluded; only assets created via the Finnhub search flow (which
-sets `market` from the profile's `exchange` field) become eligible. See
-DECISIONS.md for why this was chosen over a new column.
+**Which assets are eligible** (`isForeignStock()` in `src/lib/finnhub.ts`,
+`hasAutoFetch()` in `src/lib/coingecko.ts`): `assets.price_source`
+(`migrations/0015`) — a dedicated, explicit column, not derived from any
+other field. `price_source = 'finnhub'` for a Finnhub-eligible stock/ETF,
+`'coingecko'` for a CoinGecko-eligible crypto asset, `null` for manual
+entry. Set directly, unconditionally, the moment an asset is created via
+the corresponding search flow in `TransactionModal.tsx`'s
+`selectSearchResult()` — independent of whether any secondary profile
+lookup that follows succeeds, fails, or returns incomplete data.
+
+**Why not the original approach (reusing `market`/`coingecko_id` as the
+eligibility flag).** Earlier versions of this feature read eligibility
+off `market` being non-null for stocks (D95) and `coingecko_id` being
+non-null for crypto (supersedes D20). That broke for stocks: Finnhub's
+`/stock/profile2` returns `{}` (no `exchange`) for a lot of ETFs on the
+free tier (SCHD, SPY, ...), so a real, Finnhub-confirmed ETF could still
+end up with `market IS NULL` — indistinguishable, to `isForeignStock()`,
+from "never came through Finnhub at all." Since that one predicate gated
+*both* `/api/refresh-stock-prices` eligibility and the Prices page's
+manual-entry exclusion, an affected ETF fell into neither: no auto-fetch,
+and hidden from `/prices` as if it needed no price at all — a genuine
+dead end, not a cosmetic issue. See GOTCHAS.md #11 and DECISIONS.md D154
+(an interim fix that patched only the `market` side, at asset-creation
+time, was tried and fully reverted — see D153 — before landing on this
+column instead).
+
+`market` (exchange code) and `coingecko_id` (CoinGecko coin id) both keep
+their original columns and their original meaning — `market` is purely
+informational now (may still be null even for a `price_source =
+'finnhub'` asset, if Finnhub's profile came back empty), and
+`coingecko_id` is still the actual API parameter
+`/api/refresh-crypto-prices` needs. Neither is read as an eligibility
+signal anywhere anymore.
+
+`EditAssetModal.tsx` has an "Auto-fetch source" dropdown (Manual/
+Finnhub/CoinGecko) so a stuck or misclassified asset can be corrected
+from the UI, without SQL, the same way "CoinGecko ID" already worked for
+backfilling an older crypto asset. Existing rows from before this
+migration don't self-classify — `migrations/0015_add_price_source.sql`
+backfills the two unambiguous cases automatically (a stock with a real
+`market`, or any asset with a `coingecko_id`) and surfaces every
+ambiguous case (a `stock` with `market IS NULL` — the SCHD shape) as a
+read-only list for manual, one-by-one review rather than guessing.
 
 `prices.source = 'finnhub'` is a new, distinct value from crypto's
 `'api'` (migration `migrations/0011_add_finnhub_price_source.sql`,
 **applied** — see the file and DECISIONS.md) — kept separate so each
 row's actual provider stays identifiable, rather than conflating two
-unrelated external APIs under one generic label.
+unrelated external APIs under one generic label. Not to be confused
+with `assets.price_source` above — `prices.source` records where one
+price *row* came from; `assets.price_source` records which mechanism,
+if any, an *asset* is eligible for. Similar names, different tables,
+different questions.
 
 The Prices page's manual-entry picker excludes Finnhub-eligible assets
 the same way it already excluded crypto (D79) — `selectableAssets` now
@@ -600,8 +671,9 @@ change — same page, local `mode` state):
 - **Select from list** (default): one row per asset, each with the same
   search-then-pick combobox pattern as `TransactionModal`'s asset picker
   (minus "add new asset" — Prices only prices assets that already exist).
-  The picker excludes any asset with `hasAutoFetch(symbol)` true (from
-  `src/lib/coingecko.ts` — currently BTC/ETH), so there's no dropdown path to
+  The picker excludes any asset with a non-null `price_source` —
+  `hasAutoFetch()` (`src/lib/coingecko.ts`, crypto) or `isForeignStock()`
+  (`src/lib/finnhub.ts`, stocks/ETFs) — so there's no dropdown path to
   manually re-enter a price that auto-refresh already covers, and excludes
   whatever's already picked in another row of the same batch. "+ Add another
   asset" appends more rows for entering several prices in one batch.
