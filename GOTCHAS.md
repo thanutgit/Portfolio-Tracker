@@ -381,3 +381,36 @@ draw that distinction internally — it just means some inputs get gentler
 handling than others for no reason the caller can see or benefit from.
 Collapse to one graceful path unless something downstream would actually
 act differently on the distinction.
+
+## #13 — Turbopack's persistent cache survives "restart the server"
+**What happened:** `step="any"` was fixed in `TransactionModal.tsx`
+(confirmed correct via `git diff` — the commit matched what was
+intended) but the browser still rejected quantities with more than 6
+decimal places, and inspecting the live DOM showed `step="0.000001"` —
+the old value — still being rendered. Restarting `npm run dev` and hard
+refreshing (Ctrl+Shift+R) repeatedly did not change this.
+
+**Root cause:** Turbopack's persistent disk cache
+(`.next/dev/cache/turbopack`) is deliberately designed to survive a
+process restart, so a cold start is fast — that's its entire purpose. A
+plain restart just kills and relaunches the `next dev` process; it
+still reads the previously-compiled chunk back out of that on-disk
+cache instead of recompiling from the current source. Confirmed
+directly: grepping the actually-served compiled chunks under
+`.next/dev/server/chunks/ssr/` turned up the literal stale string
+`0.000001`, even though the same string had zero matches anywhere in
+`src/`.
+
+**Fix:** stop the dev server, delete the entire `.next` directory
+(`rm -rf .next` — includes the build output *and* the persistent
+Turbopack cache, not just build output), then start a fresh `npm run
+dev`. This is a real reset, unlike a plain restart, which only looks
+identical from the terminal.
+
+**Prevention:** if code has been changed and confirmed correct (`git
+diff`/`git status` match intent) and the server has been restarted, but
+browser behavior still doesn't match the change, don't jump to
+re-diagnosing the code as wrong. Try `rm -rf .next` before restarting
+as the first troubleshooting step, before any other diagnosis — a
+"restart" that doesn't clear this cache can look identical to a real
+reset while silently still serving stale compiled output.
